@@ -102,27 +102,36 @@ function ClientOnly() {
   const handleSignIn = async () => {
     console.log('Attempting sign in with Google');
     try {
+      console.log('Signing in with Google provider...');
       const result = await signIn('google', {callbackUrl: window.location.href});
-      console.log(`Sign in result: ${JSON.stringify(result)}`);
+      console.log(`Sign in result: ${JSON.stringify(result, null, 2)}`); // Use stringify with spacing for better readability
+
       if (result?.error) {
-        console.error('Sign-in error from provider:', result.error); // Log error from the provider
+        console.error('Sign-in error from provider:', result.error);
         toast({
           title: 'Sign-in failed',
-          description: result.error,
+          description: `Provider sign-in error: ${result.error}`,
           variant: 'destructive',
         });
+      } else if (result?.status === 200) {
+        console.log('Sign-in was successful based on status code.');
       } else {
-        console.log('Sign-in successful, no error reported.');
+        console.log('Sign-in completed without errors.');
       }
+
+      // Enhanced logging to trace the OAuth flow
+      console.groupCollapsed('OAuth Flow Details:');
+      console.log('Client ID:', process.env.GOOGLE_CLIENT_ID);
+      console.log('Callback URL:', window.location.href);
+      console.groupEnd();
     } catch (error: any) {
       console.error('Sign-in error:', error);
       toast({
         title: 'Sign-in failed',
-        description: error.message || 'Could not sign in with Google',
+        description: `An unexpected error occurred during sign-in: ${error.message || 'Unknown error'}`,
         variant: 'destructive',
       });
     } finally {
-      // Ensure the loading state is cleared regardless of sign-in outcome
       console.log('Sign-in process completed.');
     }
   };
