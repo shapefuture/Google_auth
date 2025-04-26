@@ -5,11 +5,6 @@ import {Geist, Geist_Mono} from 'next/font/google';
 import './globals.css';
 import {SessionProvider} from 'next-auth/react';
 
-export const metadata: Metadata = {
-  title: 'Gemini Gateway',
-  description: 'A Gemini Gateway App',
-};
-
 const geistSans = Geist({
   variable: '--font-geist-sans',
   subsets: ['latin'],
@@ -43,6 +38,7 @@ function ClientOnly({children}: {children: React.ReactNode}) {
     </SessionProvider>
   );
 }
+
 
 
 
