@@ -105,11 +105,14 @@ function ClientOnly() {
       const result = await signIn('google', {callbackUrl: window.location.href});
       console.log(`Sign in result: ${JSON.stringify(result)}`);
       if (result?.error) {
+        console.error('Sign-in error from provider:', result.error); // Log error from the provider
         toast({
           title: 'Sign-in failed',
           description: result.error,
           variant: 'destructive',
         });
+      } else {
+        console.log('Sign-in successful, no error reported.');
       }
     } catch (error: any) {
       console.error('Sign-in error:', error);

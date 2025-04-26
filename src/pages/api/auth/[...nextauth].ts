@@ -25,9 +25,11 @@ export const authOptions = {
         if (account) {
           token.accessToken = account.access_token;
           console.log('Access token persisted in JWT:', account.access_token); // Log the access token
+        } else {
+          console.warn('Account information missing during JWT callback.');
         }
         return token;
-      } catch (error) {
+      } catch (error: any) {
         console.error('JWT callback error:', error);
         return token;
       }
@@ -49,7 +51,7 @@ export const authOptions = {
         // Allows callback URLs on the same domain
         else if (new URL(url).hostname === new URL(baseUrl).hostname) return url;
         return baseUrl;
-      } catch (error) {
+      } catch (error: any) {
         console.error('Redirect callback error:', error);
         return baseUrl;
       }
