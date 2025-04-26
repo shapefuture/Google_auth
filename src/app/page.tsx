@@ -15,6 +15,12 @@ import {Toaster} from '@/components/ui/toaster';
 import {Skeleton} from '@/components/ui/skeleton';
 
 export default function Home() {
+  return (
+    <ClientOnly />
+  );
+}
+
+function ClientOnly() {
   const {toast} = useToast();
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<
@@ -161,3 +167,4 @@ export default function Home() {
     </div>
   );
 }
+
