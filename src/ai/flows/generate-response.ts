@@ -23,7 +23,15 @@ const GenerateResponseOutputSchema = z.object({
 export type GenerateResponseOutput = z.infer<typeof GenerateResponseOutputSchema>;
 
 export async function generateResponse(input: GenerateResponseInput): Promise<GenerateResponseOutput> {
-  return generateResponseFlow(input);
+  try {
+    console.log('generateResponse called with input:', input);
+    const result = await generateResponseFlow(input);
+    console.log('generateResponseFlow returned:', result);
+    return result;
+  } catch (error: any) {
+    console.error('Error in generateResponse:', error);
+    throw new Error(`Failed to generate response: ${error.message}`);
+  }
 }
 
 const generateResponsePrompt = ai.definePrompt({
@@ -70,9 +78,16 @@ const generateResponseFlow = ai.defineFlow<
     outputSchema: GenerateResponseOutputSchema,
   },
   async input => {
-    const {output} = await generateResponsePrompt(input);
-    return {
-      response: output!.response,
-    };
+    try {
+      console.log('generateResponseFlow called with input:', input);
+      const {output} = await generateResponsePrompt(input);
+      console.log('generateResponsePrompt returned:', output);
+      return {
+        response: output!.response,
+      };
+    } catch (error: any) {
+      console.error('Error in generateResponseFlow:', error);
+      throw new Error(`Failed to get response from prompt: ${error.message}`);
+    }
   }
 );
