@@ -16,6 +16,7 @@ describe('Home Component', () => {
   });
 
   it('calls signIn when sign in button is clicked', async () => {
+    (signIn as jest.Mock).mockResolvedValue({ok: true, url: 'https://example.com/callback'});
     render(<Home />);
     const signInButton = screen.getByText('Sign In with Google');
     fireEvent.click(signInButton);
@@ -41,5 +42,16 @@ describe('Home Component', () => {
     await waitFor(() => {
       expect(screen.getByText('Sign Out')).toBeInTheDocument();
     });
+  });
+
+  it('redirects to callback URL after successful sign-in', async () => {
+    (signIn as jest.Mock).mockResolvedValue({ok: true, url: 'https://example.com/callback'});
+    const {container} = render(<Home />);
+    const signInButton = screen.getByText('Sign In with Google');
+    fireEvent.click(signInButton);
+    await waitFor(() => expect(signIn).toHaveBeenCalled());
+
+    // Simulate redirection by checking window.location change
+    expect(window.location.href).not.toBe('http://localhost/'); // Ensure it changes
   });
 });
