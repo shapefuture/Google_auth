@@ -45,13 +45,41 @@ describe('Home Component', () => {
   });
 
   it('redirects to callback URL after successful sign-in', async () => {
+    // Mock window.location.assign
+    const mockAssign = jest.fn();
+    delete window.location;
+    window.location = { assign: mockAssign } as any;
+
     (signIn as jest.Mock).mockResolvedValue({ok: true, url: 'https://example.com/callback'});
-    const {container} = render(<Home />);
+    render(<Home />);
     const signInButton = screen.getByText('Sign In with Google');
     fireEvent.click(signInButton);
     await waitFor(() => expect(signIn).toHaveBeenCalled());
 
-    // Simulate redirection by checking window.location change
-    expect(window.location.href).not.toBe('http://localhost/'); // Ensure it changes
+    // Check if window.location.assign was called with the correct URL
+    expect(mockAssign).toHaveBeenCalledWith('https://example.com/callback');
+
+    // Restore window.location
+    window.location = Object.getPrototypeOf(window).location;
+  });
+
+  it('handles sign-in error', async () => {
+    (signIn as jest.Mock).mockResolvedValue({ok: false, error: 'Test Error'});
+    render(<Home />);
+    const signInButton = screen.getByText('Sign In with Google');
+    fireEvent.click(signInButton);
+    await waitFor(() => expect(signIn).toHaveBeenCalled());
+    const errorMessage = screen.getByText('Provider sign-in error: Test Error'); // Adjust based on your actual error message display
+    expect(errorMessage).toBeInTheDocument();
+  });
+
+  it('handles unexpected sign-in error', async () => {
+    (signIn as jest.Mock).mockRejectedValue(new Error('Unexpected Error'));
+    render(<Home />);
+    const signInButton = screen.getByText('Sign In with Google');
+    fireEvent.click(signInButton);
+    await waitFor(() => expect(signIn).toHaveBeenCalled());
+    const errorMessage = screen.getByText('An unexpected error occurred during sign-in: Unexpected Error'); // Adjust based on your actual error message display
+    expect(errorMessage).toBeInTheDocument();
   });
 });

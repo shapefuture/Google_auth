@@ -46,10 +46,22 @@ export const authOptions = {
     },
     async redirect({ url, baseUrl }) {
       try {
+        console.log('Redirect callback called', { url, baseUrl }); // Log the input
+
         // Allows relative callback URLs
-        if (url.startsWith("/")) return `${baseUrl}${url}`;
+        if (url.startsWith("/")) {
+          const redirectUrl = `${baseUrl}${url}`;
+          console.log('Relative redirect detected, adjusted to:', redirectUrl);
+          return redirectUrl;
+        }
         // Allows callback URLs on the same domain
-        else if (new URL(url).hostname === new URL(baseUrl).hostname) return url;
+        const urlHostname = new URL(url).hostname;
+        const baseUrlHostname = new URL(baseUrl).hostname;
+        if (urlHostname === baseUrlHostname) {
+          console.log('Same domain redirect detected:', url);
+          return url;
+        }
+        console.log('External redirect blocked, using baseUrl:', baseUrl);
         return baseUrl;
       } catch (error: any) {
         console.error('Redirect callback error:', error);
