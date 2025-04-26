@@ -120,10 +120,12 @@ function ClientOnly() {
       }
 
       // Enhanced logging to trace the OAuth flow
-      console.groupCollapsed('OAuth Flow Details:');
-      console.log('Client ID:', process.env.GOOGLE_CLIENT_ID);
-      console.log('Callback URL:', window.location.href);
-      console.groupEnd();
+      if (process.env.NODE_ENV === 'development') {
+        console.groupCollapsed('OAuth Flow Details:');
+        console.log('Client ID:', process.env.GOOGLE_CLIENT_ID);
+        console.log('Callback URL:', window.location.href);
+        console.groupEnd();
+      }
     } catch (error: any) {
       console.error('Sign-in error:', error);
       toast({
@@ -133,6 +135,19 @@ function ClientOnly() {
       });
     } finally {
       console.log('Sign-in process completed.');
+    }
+  };
+
+  const handleSignInWithErrorBoundary = async () => {
+    try {
+      await handleSignIn();
+    } catch (error: any) {
+      console.error('Error during sign-in:', error);
+      toast({
+        title: 'Sign-in failed',
+        description: `An error occurred during sign-in. Please try again. ${error.message || ''}`,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -155,7 +170,7 @@ function ClientOnly() {
             </Button>
           </div>
         ) : (
-          <Button onClick={handleSignIn}>Sign In with Google</Button>
+          <Button onClick={handleSignInWithErrorBoundary}>Sign In with Google</Button>
         )}
       </header>
       <main className="flex-grow p-4">

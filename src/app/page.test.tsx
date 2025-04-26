@@ -1,4 +1,3 @@
-
 import {render, screen, fireEvent, waitFor} from '@testing-library/react';
 import Home from './page';
 import {useSession, signIn, signOut} from 'next-auth/react';
@@ -28,5 +27,19 @@ describe('Home Component', () => {
     render(<Home />);
     const signOutButton = screen.getByText('Sign Out');
     expect(signOutButton).toBeInTheDocument();
+  });
+
+  it('updates UI after successful sign-in', async () => {
+    (useSession as jest.Mock).mockReturnValue({
+      data: { user: { name: 'Test User' } },
+      status: 'authenticated',
+    });
+
+    render(<Home />);
+
+    // Wait for the component to re-render with the new session status
+    await waitFor(() => {
+      expect(screen.getByText('Sign Out')).toBeInTheDocument();
+    });
   });
 });
