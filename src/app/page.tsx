@@ -32,12 +32,38 @@ function ClientOnly() {
   const [loading, setLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [userProject, setUserProject] = useState<string | null>(null);
+  const {data: session, status} = useSession();
+
+  useEffect(() => {
+    console.log('ClientOnly component mounted');
+    return () => {
+      console.log('ClientOnly component unmounted');
+    };
+  }, []);
 
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    console.log(`Authentication status: ${status}`);
+    if (status === 'authenticated') {
+      if (session?.accessToken) {
+        console.log(`Access token found in session: ${session.accessToken}`);
+        setAccessToken(session.accessToken as string);
+      } else {
+        console.warn('Access token missing from session.');
+      }
+    } else if (status === 'unauthenticated') {
+      console.log('User is not authenticated.');
+      setAccessToken(null);
+    } else if (status === 'loading') {
+      console.log('Session loading...');
+    }
+  }, [session, status]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +75,13 @@ function ClientOnly() {
     setLoading(true);
 
     try {
-      const response = await generateResponse({prompt: prompt, accessToken: accessToken ?? undefined});
+      console.log(`Submitting prompt: ${prompt} with accessToken: ${accessToken} and userProject: ${userProject}`);
+      const response = await generateResponse({
+        prompt: prompt,
+        accessToken: accessToken ?? undefined,
+        userProject: userProject ?? undefined,
+      });
+      console.log(`Gemini API response: ${JSON.stringify(response)}`);
       const aiMessage = {role: 'assistant' as const, content: response.response};
       setMessages(prevMessages => [...prevMessages, aiMessage]);
     } catch (error: any) {
@@ -65,8 +97,10 @@ function ClientOnly() {
   };
 
   const handleSignIn = async () => {
+    console.log('Attempting sign in with Google');
     try {
       const result = await signIn('google', {callbackUrl: window.location.href});
+      console.log(`Sign in result: ${JSON.stringify(result)}`);
       if (result?.error) {
         toast({
           title: 'Sign-in failed',
@@ -75,6 +109,7 @@ function ClientOnly() {
         });
       }
     } catch (error: any) {
+      console.error('Sign-in error:', error);
       toast({
         title: 'Sign-in failed',
         description: error.message || 'Could not sign in with Google',
@@ -82,16 +117,6 @@ function ClientOnly() {
       });
     }
   };
-
-  const {data: session, status} = useSession();
-
-  useEffect(() => {
-    if (status === 'authenticated') {
-      if (session?.accessToken) {
-        setAccessToken(session.accessToken as string);
-      }
-    }
-  }, [session, status]);
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -167,4 +192,3 @@ function ClientOnly() {
     </div>
   );
 }
-
