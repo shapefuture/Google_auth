@@ -17,12 +17,13 @@ const ai: Genkit = genkit({
   model: 'googleai/gemini-2.0-flash',
 });
 
-if (ai.on) {
+// Check if ai.on is a function before calling it. This prevents errors if Genkit is not fully initialized or if the on method is not available.
+if (typeof ai.on === 'function') {
   ai.on('error', (err, event) => {
     console.error('Genkit error:', err, event);
   });
 } else {
-  console.warn('ai.on is not a function.  This is unexpected, but continuing.');
+  console.warn('ai.on is not a function. This is unexpected, but continuing without error handling.');
 }
 
 export {ai};

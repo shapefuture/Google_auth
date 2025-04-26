@@ -24,6 +24,7 @@ export const authOptions = {
         // Persist the OAuth access token to the token right after signin
         if (account) {
           token.accessToken = account.access_token;
+          console.log('Access token persisted in JWT:', account.access_token); // Log the access token
         }
         return token;
       } catch (error) {
@@ -44,23 +45,37 @@ export const authOptions = {
     async redirect({ url, baseUrl }) {
       try {
         // Allows relative callback URLs
-        if (url.startsWith("/")) return `${baseUrl}${url}`
+        if (url.startsWith("/")) return `${baseUrl}${url}`;
         // Allows callback URLs on the same domain
-        else if (new URL(url).hostname === new URL(baseUrl).hostname) return url
-        return baseUrl
+        else if (new URL(url).hostname === new URL(baseUrl).hostname) return url;
+        return baseUrl;
       } catch (error) {
         console.error('Redirect callback error:', error);
         return baseUrl;
       }
     }
   },
-  debug: true, // Enable debug logging
+  debug: process.env.NODE_ENV === 'development', // Enable debug logging in development environment
   events: {
-    signIn: async (message) => console.log('signIn', message),
-    signOut: async (message) => console.log('signOut', message),
-    createUser: async (message) => console.log('createUser', message),
-    session: async (message) => console.log('session', message),
-    jwt: async (message) => console.log('jwt', message),
+    signIn: async (message) => {
+      console.log('signIn event:', message);
+    },
+    signOut: async (message) => {
+      console.log('signOut event:', message);
+    },
+    createUser: async (message) => {
+      console.log('createUser event:', message);
+    },
+    session: async (message) => {
+      console.log('session event:', message);
+    },
+    jwt: async (message) => {
+      console.log('jwt event:', message);
+    },
+    // Add event handler to log errors during signin
+    error: async (message) => {
+      console.error('Authentication error event:', message);
+    },
   },
 };
 

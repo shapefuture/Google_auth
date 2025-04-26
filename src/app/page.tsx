@@ -15,9 +15,7 @@ import {Toaster} from '@/components/ui/toaster';
 import {Skeleton} from '@/components/ui/skeleton';
 
 export default function Home() {
-  return (
-    <ClientOnly />
-  );
+  return <ClientOnly />;
 }
 
 function ClientOnly() {
@@ -56,6 +54,11 @@ function ClientOnly() {
         setAccessToken(session.accessToken as string);
       } else {
         console.warn('Access token missing from session.');
+        toast({
+          title: 'Warning',
+          description: 'Access token missing from session. Some features may be unavailable.',
+          variant: 'warning',
+        });
       }
     } else if (status === 'unauthenticated') {
       console.log('User is not authenticated.');
@@ -63,7 +66,7 @@ function ClientOnly() {
     } else if (status === 'loading') {
       console.log('Session loading...');
     }
-  }, [session, status]);
+  }, [session, status, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,9 +147,7 @@ function ClientOnly() {
         <Card className="h-full flex flex-col">
           <CardHeader>
             <h2 className="text-lg font-semibold">Chat</h2>
-            <p className="text-sm text-muted-foreground">
-              Start chatting with Gemini!
-            </p>
+            <p className="text-sm text-muted-foreground">Start chatting with Gemini!</p>
           </CardHeader>
           <CardContent className="relative flex-1">
             <ScrollArea className="h-full">
@@ -189,6 +190,25 @@ function ClientOnly() {
           </CardContent>
         </Card>
       </main>
+       {/* Debugging Section - Conditionally render session details */}
+       {process.env.NODE_ENV === 'development' && (
+        <div className="bg-gray-100 p-4 mt-4 rounded-md">
+          <h3 className="text-lg font-semibold mb-2">Session Details (Debug)</h3>
+          {status === 'loading' ? (
+            <p>Session loading...</p>
+          ) : status === 'authenticated' ? (
+            <>
+              <p>User ID: {session?.user?.id}</p>
+              <p>User Name: {session?.user?.name}</p>
+              <p>User Email: {session?.user?.email}</p>
+              <p>Access Token: {session?.accessToken}</p>
+              <p>Session Status: {status}</p>
+            </>
+          ) : (
+            <p>No session data available.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
