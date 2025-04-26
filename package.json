@@ -1,3 +1,4 @@
+
 {
   "name": "nextn",
   "version": "0.1.0",
@@ -9,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prebuild": "npm run typecheck && npm run lint"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.0.4",
