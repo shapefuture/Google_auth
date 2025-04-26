@@ -1,0 +1,16 @@
+
+{
+  "extends": [
+    "next/core-web-vitals",
+    "plugin:testing-library/react",
+    "plugin:jest-dom/recommended"
+  ],
+  "plugins": ["testing-library", "jest-dom"],
+  "rules": {
+    "testing-library/no-debug": "error",
+    "jest-dom/prefer-checked": "error",
+    "jest-dom/prefer-enabled-disabled": "error",
+    "jest-dom/prefer-required": "error",
+    "jest-dom/prefer-in-document": "error"
+  }
+}

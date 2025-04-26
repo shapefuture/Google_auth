@@ -1,5 +1,3 @@
-'use client';
-
 import type {Metadata} from 'next';
 import {Geist, Geist_Mono} from 'next/font/google';
 import './globals.css';
@@ -16,6 +14,10 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+export const metadata: Metadata = {
+  title: 'Gemini Gateway',
+  description: 'A Gemini Gateway App',
+};
 
 export default function RootLayout({
   children,
@@ -38,7 +40,7 @@ export default function RootLayout({
   );
 }
 
-
+'use client';
 function ClientOnly({children}: {children: React.ReactNode}) {
   useEffect(() => {
     console.log('ClientOnly component mounted');
