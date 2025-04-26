@@ -30,7 +30,7 @@ export const authOptions = {
         }
         return token;
       } catch (error: any) {
-        console.error('JWT callback error:', error);
+        console.error('JWT callback error:', error.message, error.stack);
         return token;
       }
     },
@@ -39,8 +39,8 @@ export const authOptions = {
         // Send properties to the client, like an access_token from a provider.
         session.accessToken = token.accessToken as string;
         return session;
-      } catch (error) {
-        console.error('Session callback error:', error);
+      } catch (error: any) {
+        console.error('Session callback error:', error.message, error.stack);
         return session;
       }
     },

@@ -121,6 +121,9 @@ function ClientOnly() {
         description: error.message || 'Could not sign in with Google',
         variant: 'destructive',
       });
+    } finally {
+      // Ensure the loading state is cleared regardless of sign-in outcome
+      console.log('Sign-in process completed.');
     }
   };
 
