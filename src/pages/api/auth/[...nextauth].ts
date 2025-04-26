@@ -31,7 +31,15 @@ export const authOptions = {
       session.accessToken = token.accessToken as string;
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      // Allows relative callback URLs
+      if (url.startsWith("/")) return `${baseUrl}${url}`
+      // Allows callback URLs on the same domain
+      else if (new URL(url).hostname === new URL(baseUrl).hostname) return url
+      return baseUrl
+    }
   },
 };
 
 export default NextAuth(authOptions);
+
