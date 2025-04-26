@@ -5,6 +5,11 @@ import {Geist, Geist_Mono} from 'next/font/google';
 import './globals.css';
 import {SessionProvider} from 'next-auth/react';
 
+export const metadata: Metadata = {
+  title: 'Gemini Gateway',
+  description: 'A Gemini Gateway App',
+};
+
 const geistSans = Geist({
   variable: '--font-geist-sans',
   subsets: ['latin'],
@@ -15,10 +20,6 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-export const metadata: Metadata = {
-  title: 'Gemini Gateway',
-  description: 'A Gemini Gateway App',
-};
 
 export default function RootLayout({
   children,
@@ -34,6 +35,7 @@ export default function RootLayout({
   );
 }
 
+
 function ClientOnly({children}: {children: React.ReactNode}) {
   return (
     <SessionProvider>
@@ -41,3 +43,7 @@ function ClientOnly({children}: {children: React.ReactNode}) {
     </SessionProvider>
   );
 }
+
+
+
+
