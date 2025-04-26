@@ -17,8 +17,12 @@ const ai: Genkit = genkit({
   model: 'googleai/gemini-2.0-flash',
 });
 
-ai.on('error', (err, event) => {
-  console.error('Genkit error:', err, event);
-});
+if (ai.on) {
+  ai.on('error', (err, event) => {
+    console.error('Genkit error:', err, event);
+  });
+} else {
+  console.warn('ai.on is not a function.  This is unexpected, but continuing.');
+}
 
 export {ai};
