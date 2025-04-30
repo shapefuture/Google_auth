@@ -13,6 +13,13 @@ import {cn} from '@/lib/utils';
 import {useToast} from '@/hooks/use-toast';
 import {Toaster} from '@/components/ui/toaster';
 import {Skeleton} from '@/components/ui/skeleton';
+import {ProjectManager} from '@/components/project-manager';
+import {Cog, Info} from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 // Wrapper component to ensure hooks are used within client boundary
 function ClientWrapper() {
@@ -27,7 +34,8 @@ function ClientWrapper() {
   const [loading, setLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [userProject, setUserProject] = useState<string | null>(null); // Assuming userProject might be needed later
+  const [userProject, setUserProject] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const {data: session, status} = useSession();
 
   useEffect(() => {
@@ -67,6 +75,19 @@ function ClientWrapper() {
     }
   }, [session, status, toast]);
 
+  const handleProjectChange = (projectId: string | null) => {
+    console.log(`Project ID changed to: ${projectId}`);
+    setUserProject(projectId);
+    
+    if (projectId) {
+      toast({
+        title: 'Project Linked',
+        description: `Using Google Cloud Project: ${projectId}`,
+        variant: 'default',
+      });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim() || loading) return; // Prevent submission if empty or already loading
@@ -90,14 +111,27 @@ function ClientWrapper() {
     } catch (error: any) {
       const errorMessage = error.message || 'Failed to generate response due to an unknown error';
       console.error('Gemini API Error:', error.stack || error); // Log stack trace if available
-      toast({
-        title: 'Error Generating Response',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-      // Optionally add the failed user message back to the input
-      // setPrompt(currentPrompt);
-      // Or add an error message to the chat
+      
+      // Handle project-specific errors
+      if (errorMessage.includes('project') || errorMessage.includes('billing') || 
+          errorMessage.includes('quota') || errorMessage.includes('permission')) {
+        toast({
+          title: 'Project Configuration Error',
+          description: `${errorMessage}. Please check your Google Cloud Project settings.`,
+          variant: 'destructive',
+        });
+        
+        // Show project settings if project-related error
+        setShowSettings(true);
+      } else {
+        toast({
+          title: 'Error Generating Response',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
+      
+      // Add an error message to the chat
       setMessages(prevMessages => [
         ...prevMessages,
         { role: 'assistant', content: `Sorry, I couldn't get a response. Error: ${errorMessage}` }
@@ -165,29 +199,80 @@ function ClientWrapper() {
       <Toaster />
       <header className="bg-secondary p-4 flex justify-between items-center shadow-md">
         <h1 className="text-xl font-bold">Gemini Gateway</h1>
-        {status === 'loading' ? (
-          <Skeleton className="h-9 w-24 rounded-md" /> // Match button size
-        ) : status === 'authenticated' ? (
-          <div className="flex items-center gap-3">
-             <Avatar className="h-8 w-8"> {/* Slightly smaller avatar */}
-               <AvatarImage src={session?.user?.image ?? undefined} alt="User Avatar" />
-               <AvatarFallback>{(session?.user?.name as string)?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
-             </Avatar>
-             <span className="text-sm font-medium hidden sm:inline">{session?.user?.name || 'User'}</span> {/* Hide name on small screens */}
-             <Button variant="outline" size="sm" onClick={() => signOut()}>
-               Sign Out
-             </Button>
-           </div>
-        ) : (
-          <Button onClick={handleSignIn} data-testid="sign-in-button"> {/* Added data-testid */}
-            Sign In with Google
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {status === 'authenticated' && (
+            <Popover open={showSettings} onOpenChange={setShowSettings}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Cog className="h-4 w-4 mr-1" />
+                  <span className="hidden sm:inline">Settings</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0" align="end">
+                <div className="p-4 space-y-4">
+                  <ProjectManager onProjectChange={handleProjectChange} />
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          
+          {status === 'loading' ? (
+            <Skeleton className="h-9 w-24 rounded-md" /> // Match button size
+          ) : status === 'authenticated' ? (
+            <div className="flex items-center gap-3">
+              <Avatar className="h-8 w-8"> {/* Slightly smaller avatar */}
+                <AvatarImage src={session?.user?.image ?? undefined} alt="User Avatar" />
+                <AvatarFallback>{(session?.user?.name as string)?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-medium hidden sm:inline">{session?.user?.name || 'User'}</span> {/* Hide name on small screens */}
+              <Button variant="outline" size="sm" onClick={() => signOut()}>
+                Sign Out
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={handleSignIn} data-testid="sign-in-button"> {/* Added data-testid */}
+              Sign In with Google
+            </Button>
+          )}
+        </div>
       </header>
       <main className="flex-grow p-4 overflow-hidden flex">
         <Card className="h-full flex flex-col flex-grow">
           <CardHeader>
-            <h2 className="text-lg font-semibold">Chat</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Chat</h2>
+              {userProject ? (
+                <div className="flex items-center">
+                  <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                    Using project: {userProject.substring(0, 12)}{userProject.length > 12 ? '...' : ''}
+                  </span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1">
+                        <Info className="h-3 w-3" />
+                        <span className="sr-only">Info</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" className="w-80">
+                      <div className="space-y-2">
+                        <h3 className="font-medium">Using Your Google Cloud Project</h3>
+                        <p className="text-sm">
+                          API requests are being made using your Google Cloud Project.
+                          You are responsible for any usage costs incurred.
+                        </p>
+                        <p className="text-sm">
+                          Full Project ID: <code className="bg-slate-100 px-1 py-0.5 rounded">{userProject}</code>
+                        </p>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              ) : status === 'authenticated' ? (
+                <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
+                  Link Project
+                </Button>
+              ) : null}
+            </div>
             <p className="text-sm text-muted-foreground">
               {status === 'authenticated' ? `Chatting as ${session?.user?.name}` : 'Sign in to start chatting'}
             </p>
@@ -195,6 +280,27 @@ function ClientWrapper() {
           <CardContent className="flex-1 overflow-hidden flex flex-col p-4">
             <ScrollArea className="flex-grow mb-4 pr-4 -mr-4"> {/* Added padding for scrollbar */}
               <div className="space-y-4" ref={chatContainerRef}>
+                {messages.length === 0 && status === 'authenticated' && (
+                  <div className="flex items-center justify-center h-full min-h-[200px]">
+                    <div className="text-center p-6 bg-slate-50 rounded-lg max-w-md">
+                      <h3 className="font-medium mb-2">Welcome to Gemini Gateway!</h3>
+                      <p className="text-sm text-slate-600 mb-4">
+                        Start chatting with Gemini AI using your own Google Cloud Project.
+                        {!userProject && (
+                          <span className="block mt-2 text-amber-600">
+                            No project linked yet. Click "Link Project" to use your own quota.
+                          </span>
+                        )}
+                      </p>
+                      {!userProject && (
+                        <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
+                          Link Your Project
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
                 {messages.map((message, index) => (
                   <div
                     key={index}
@@ -232,7 +338,11 @@ function ClientWrapper() {
                   }
                 }}
               />
-              <Button type="submit" disabled={status !== 'authenticated' || loading || !prompt.trim()}>
+              <Button 
+                type="submit" 
+                disabled={status !== 'authenticated' || loading || !prompt.trim()}
+                title={!userProject && status === 'authenticated' ? "Consider linking your Google Cloud Project first" : undefined}
+              >
                 {loading ? '...' : 'Send'} {/* Show ellipsis when loading */}
               </Button>
             </form>
@@ -243,7 +353,7 @@ function ClientWrapper() {
        {process.env.NODE_ENV === 'development' && (
         <div className="bg-gray-800 text-white p-4 mt-4 rounded-md text-xs overflow-auto max-h-40"> {/* Darker theme, smaller text */}
           <h3 className="text-sm font-semibold mb-2">Session Details (Debug)</h3>
-          <pre><code>{JSON.stringify({ status, session }, null, 2)}</code></pre>
+          <pre><code>{JSON.stringify({ status, session, userProject }, null, 2)}</code></pre>
         </div>
       )}
     </div>

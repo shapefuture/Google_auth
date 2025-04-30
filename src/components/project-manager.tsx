@@ -1,0 +1,136 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { ProjectSettingsModal } from '@/components/ui/project-settings-modal';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { getUserProjectId, storeUserProjectId } from '@/lib/project-utils';
+import { useToast } from '@/hooks/use-toast';
+import { Settings } from 'lucide-react';
+
+export function ProjectManager({ onProjectChange }: { onProjectChange: (projectId: string | null) => void }) {
+  const { data: session } = useSession();
+  const [userProject, setUserProject] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadUserProject() {
+      if (session?.user?.id) {
+        setIsLoading(true);
+        try {
+          // Load from localStorage first (for immediate feedback)
+          const localProject = localStorage.getItem(`project-${session.user.id}`);
+          if (localProject) {
+            setUserProject(localProject);
+            onProjectChange(localProject);
+          }
+
+          // Then try to load from server (in a real implementation)
+          const serverProject = await getUserProjectId(session.user.id as string);
+          if (serverProject && serverProject !== localProject) {
+            setUserProject(serverProject);
+            onProjectChange(serverProject);
+            // Update localStorage
+            localStorage.setItem(`project-${session.user.id}`, serverProject);
+          }
+        } catch (error) {
+          console.error('Failed to load user project:', error);
+          toast({
+            title: 'Error loading project settings',
+            description: 'Could not retrieve your project settings. Please try again later.',
+            variant: 'destructive',
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadUserProject();
+  }, [session, onProjectChange, toast]);
+
+  const handleProjectChange = (projectId: string | null) => {
+    if (session?.user?.id) {
+      setUserProject(projectId);
+      onProjectChange(projectId);
+      
+      // Store in localStorage for immediate feedback
+      if (projectId) {
+        localStorage.setItem(`project-${session.user.id}`, projectId);
+      } else {
+        localStorage.removeItem(`project-${session.user.id}`);
+      }
+      
+      // Store on server (in a real implementation)
+      storeUserProjectId(session.user.id as string, projectId);
+    }
+    
+    setIsModalOpen(false);
+  };
+
+  if (!session) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">Google Cloud Project</CardTitle>
+          {userProject && (
+            <Badge variant="outline" className="text-xs">
+              {userProject}
+            </Badge>
+          )}
+        </div>
+        <CardDescription>
+          {userProject 
+            ? "Using your Google Cloud Project for Gemini API access" 
+            : "Link your Google Cloud Project to use your own quota"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="text-sm pb-3">
+        {isLoading ? (
+          <p>Loading your project settings...</p>
+        ) : userProject ? (
+          <p>
+            API requests are being attributed to your project. You can monitor usage and billing in the{' '}
+            <a 
+              href={`https://console.cloud.google.com/apis/dashboard?project=${userProject}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              Google Cloud Console
+            </a>.
+          </p>
+        ) : (
+          <p>
+            Link your Google Cloud Project to use the Gemini API with your own quota and billing.
+            This gives you full control over usage and costs.
+          </p>
+        )}
+      </CardContent>
+      <CardFooter>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="w-full"
+          onClick={() => setIsModalOpen(true)}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          {userProject ? "Manage Project Settings" : "Link Google Cloud Project"}
+        </Button>
+      </CardFooter>
+
+      <ProjectSettingsModal
+        userProject={userProject}
+        setUserProject={handleProjectChange}
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+      />
+    </Card>
+  );
+}
