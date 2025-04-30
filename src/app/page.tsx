@@ -14,7 +14,7 @@ import {useToast} from '@/hooks/use-toast';
 import {Toaster} from '@/components/ui/toaster';
 import {Skeleton} from '@/components/ui/skeleton';
 import {ProjectManager} from '@/components/project-manager';
-import {Cog, Info} from 'lucide-react';
+import {Cog, Info, CloudOff} from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -165,6 +165,12 @@ function ClientWrapper() {
         description: `Using Google Cloud Project: ${projectId}`,
         variant: 'default',
       });
+    } else {
+      toast({
+        title: 'Project Unlinked',
+        description: 'Using Gemini Gateway quota instead',
+        variant: 'default',
+      });
     }
   };
 
@@ -185,12 +191,15 @@ function ClientWrapper() {
         await refreshToken();
       }
       
-      console.log(`Submitting prompt: "${currentPrompt}" with accessToken: ${accessToken ? 'present' : 'absent'} and userProject: ${userProject}`);
+      // Log whether using app's API key or user's project
+      console.log(`Submitting prompt: "${currentPrompt}" with accessToken: ${accessToken ? 'present' : 'absent'} and userProject: ${userProject || 'using app default'}`);
+      
       const response = await generateResponse({
         prompt: currentPrompt, // Use stored prompt
         accessToken: accessToken ?? undefined,
-        userProject: userProject ?? undefined,
+        userProject: userProject ?? undefined, // Will use default API key if null
       });
+      
       console.log(`Gemini API response received: ${JSON.stringify(response)}`);
       const aiMessage = {role: 'assistant' as const, content: response.response};
       setMessages(prevMessages => [...prevMessages, aiMessage]);
@@ -346,37 +355,71 @@ function ClientWrapper() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Chat</h2>
-              {userProject ? (
+              {status === 'authenticated' && (
                 <div className="flex items-center">
-                  <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-                    Using project: {userProject.substring(0, 12)}{userProject.length > 12 ? '...' : ''}
-                  </span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1">
-                        <Info className="h-3 w-3" />
-                        <span className="sr-only">Info</span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent side="top" className="w-80">
-                      <div className="space-y-2">
-                        <h3 className="font-medium">Using Your Google Cloud Project</h3>
-                        <p className="text-sm">
-                          API requests are being made using your Google Cloud Project.
-                          You are responsible for any usage costs incurred.
-                        </p>
-                        <p className="text-sm">
-                          Full Project ID: <code className="bg-slate-100 px-1 py-0.5 rounded">{userProject}</code>
-                        </p>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                  {userProject ? (
+                    <div className="flex items-center">
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                        Using your project: {userProject.substring(0, 12)}{userProject.length > 12 ? '...' : ''}
+                      </span>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1">
+                            <Info className="h-3 w-3" />
+                            <span className="sr-only">Info</span>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent side="top" className="w-80">
+                          <div className="space-y-2">
+                            <h3 className="font-medium">Using Your Google Cloud Project</h3>
+                            <p className="text-sm">
+                              API requests are being made using your Google Cloud Project.
+                              You are responsible for any usage costs incurred.
+                            </p>
+                            <p className="text-sm">
+                              Full Project ID: <code className="bg-slate-100 px-1 py-0.5 rounded">{userProject}</code>
+                            </p>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  ) : (
+                    <div className="flex items-center">
+                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full flex items-center">
+                        <CloudOff className="h-3 w-3 mr-1" />
+                        Using Gemini Gateway quota
+                      </span>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1">
+                            <Info className="h-3 w-3" />
+                            <span className="sr-only">Info</span>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent side="top" className="w-80">
+                          <div className="space-y-2">
+                            <h3 className="font-medium">Using Gemini Gateway Quota</h3>
+                            <p className="text-sm">
+                              You're using the app's shared API quota, which may be limited.
+                            </p>
+                            <p className="text-sm">
+                              For higher limits and more reliable access, link your own Google Cloud Project.
+                            </p>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="w-full mt-2"
+                              onClick={() => setShowSettings(true)}
+                            >
+                              Link Your Project
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  )}
                 </div>
-              ) : status === 'authenticated' ? (
-                <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
-                  Link Project
-                </Button>
-              ) : null}
+              )}
             </div>
             <p className="text-sm text-muted-foreground">
               {status === 'authenticated' ? `Chatting as ${session?.user?.name}` : 'Sign in to start chatting'}
@@ -390,18 +433,23 @@ function ClientWrapper() {
                     <div className="text-center p-6 bg-slate-50 rounded-lg max-w-md">
                       <h3 className="font-medium mb-2">Welcome to Gemini Gateway!</h3>
                       <p className="text-sm text-slate-600 mb-4">
-                        Start chatting with Gemini AI using your own Google Cloud Project.
+                        You can start chatting right away using the app's default quota.
                         {!userProject && (
-                          <span className="block mt-2 text-amber-600">
-                            No project linked yet. Click "Link Project" to use your own quota.
+                          <span className="block mt-2">
+                            For higher limits, you can optionally{" "}
+                            <button 
+                              className="text-blue-600 hover:underline"
+                              onClick={() => setShowSettings(true)}
+                            >
+                              link your own Google Cloud Project
+                            </button>.
                           </span>
                         )}
                       </p>
-                      {!userProject && (
-                        <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
-                          Link Your Project
-                        </Button>
-                      )}
+                      <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700 text-left">
+                        <p className="font-medium">AI is ready to use! 🚀</p>
+                        <p className="mt-1">Currently using: {userProject ? "Your Google Cloud Project" : "Gemini Gateway's shared quota"}</p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -446,7 +494,6 @@ function ClientWrapper() {
               <Button 
                 type="submit" 
                 disabled={status !== 'authenticated' || loading || !prompt.trim()}
-                title={!userProject && status === 'authenticated' ? "Consider linking your Google Cloud Project first" : undefined}
               >
                 {loading ? '...' : 'Send'} {/* Show ellipsis when loading */}
               </Button>
@@ -465,7 +512,8 @@ function ClientWrapper() {
             tokenInfo: {
               accessToken: accessToken ? '[PRESENT]' : '[MISSING]',
               expiresAt: tokenExpiry ? new Date(tokenExpiry * 1000).toLocaleString() : 'unknown'
-            }
+            },
+            aiSource: userProject ? 'User Project' : 'Default API Key'
           }, null, 2)}</code></pre>
         </div>
       )}

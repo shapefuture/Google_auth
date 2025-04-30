@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { getUserProjectId, storeUserProjectId } from '@/lib/project-utils';
 import { useToast } from '@/hooks/use-toast';
-import { Settings } from 'lucide-react';
+import { Settings, Cloud } from 'lucide-react';
 
 export function ProjectManager({ onProjectChange }: { onProjectChange: (projectId: string | null) => void }) {
   const { data: session } = useSession();
@@ -79,38 +79,55 @@ export function ProjectManager({ onProjectChange }: { onProjectChange: (projectI
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">Google Cloud Project</CardTitle>
-          {userProject && (
+          {userProject ? (
             <Badge variant="outline" className="text-xs">
               {userProject}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+              <Cloud className="h-3 w-3 mr-1" />
+              Using App Quota
             </Badge>
           )}
         </div>
         <CardDescription>
           {userProject 
             ? "Using your Google Cloud Project for Gemini API access" 
-            : "Link your Google Cloud Project to use your own quota"}
+            : "Currently using Gemini Gateway's shared API quota"}
         </CardDescription>
       </CardHeader>
       <CardContent className="text-sm pb-3">
         {isLoading ? (
           <p>Loading your project settings...</p>
         ) : userProject ? (
-          <p>
-            API requests are being attributed to your project. You can monitor usage and billing in the{' '}
-            <a 
-              href={`https://console.cloud.google.com/apis/dashboard?project=${userProject}`} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              Google Cloud Console
-            </a>.
-          </p>
+          <div className="space-y-2">
+            <p>
+              API requests are attributed to your project. You can monitor usage and billing in the{' '}
+              <a 
+                href={`https://console.cloud.google.com/apis/dashboard?project=${userProject}`} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                Google Cloud Console
+              </a>.
+            </p>
+            <p className="text-xs text-green-700">
+              ✅ Higher API quotas and rate limits
+            </p>
+          </div>
         ) : (
-          <p>
-            Link your Google Cloud Project to use the Gemini API with your own quota and billing.
-            This gives you full control over usage and costs.
-          </p>
+          <div className="space-y-2">
+            <p>
+              You're using the app's shared API quota. This is free but has lower limits.
+            </p>
+            <p className="text-xs text-amber-600">
+              ⚠️ Limited to shared API quotas and rate limits
+            </p>
+            <p className="text-xs mt-2">
+              Link your own Google Cloud Project for higher quotas and more reliable access.
+            </p>
+          </div>
         )}
       </CardContent>
       <CardFooter>
