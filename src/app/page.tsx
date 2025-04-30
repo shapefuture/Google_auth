@@ -22,6 +22,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from '@/components/ui/badge';
+import { useRouter } from 'next/navigation';
 
 // Wrapper component to ensure hooks are used within client boundary
 function ClientWrapper() {
@@ -41,6 +42,14 @@ function ClientWrapper() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAutoSetup, setShowAutoSetup] = useState(false);
   const {data: session, status, update: updateSession} = useSession();
+  const router = useRouter();
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
 
   useEffect(() => {
     console.log('ClientWrapper component mounted');
@@ -164,7 +173,7 @@ function ClientWrapper() {
       });
       
       // Force sign out if token refresh fails
-      signOut();
+      signOut({ callbackUrl: '/login' });
     }
   };
 
@@ -292,51 +301,36 @@ function ClientWrapper() {
     }
   };
 
- const handleSignIn = async () => {
-    console.log('[handleSignIn] Initiating sign-in process...');
-    try {
-      console.log('[handleSignIn] Calling next-auth signIn with Google provider.');
-      // Ensure callbackUrl is correctly set to the current page URL
-      const callbackUrl = window.location.href;
-      console.log(`[handleSignIn] Using callbackUrl: ${callbackUrl}`);
+  // We don't need handleSignIn anymore as we redirect to the login page
+  // when user is not authenticated via middleware
 
-      const result = await signIn('google', { callbackUrl }); // Pass callbackUrl here
+  // If the session is loading or not authenticated, show a loading state
+  if (status === 'loading') {
+    return (
+      <div className="flex flex-col h-screen bg-background">
+        <header className="bg-secondary p-4 flex justify-between items-center shadow-md">
+          <h1 className="text-xl font-bold">Gemini Gateway</h1>
+          <Skeleton className="h-9 w-24 rounded-md" />
+        </header>
+        <main className="flex-grow p-4 flex items-center justify-center">
+          <Card className="max-w-md w-full p-6">
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-3/4 mx-auto" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-4/6" />
+              <Skeleton className="h-10 w-full rounded-md mt-4" />
+            </div>
+          </Card>
+        </main>
+      </div>
+    );
+  }
 
-      console.log(`[handleSignIn] signIn call completed. Result:`, JSON.stringify(result, null, 2));
-
-      // Check the result object for errors or success indicators
-      if (result?.error) {
-        console.error(`[handleSignIn] Sign-in failed with error: ${result.error}`);
-        toast({
-          title: 'Sign-in Failed',
-          description: `Could not sign in. Provider error: ${result.error}`,
-          variant: 'destructive',
-        });
-      } else if (!result || result.ok === false) {
-        // Handle cases where result is null/undefined or ok is false without a specific error message
-        console.error('[handleSignIn] Sign-in failed. Result:', result);
-        toast({
-          title: 'Sign-in Failed',
-          description: 'Sign-in attempt was not successful. Please try again.',
-          variant: 'destructive',
-        });
-      } else {
-        // Sign-in process initiated, NextAuth will handle the redirect or session update
-        console.log('[handleSignIn] Sign-in initiated successfully. NextAuth will handle the rest.');
-      }
-    } catch (error: any) {
-      // Catch unexpected errors during the signIn call itself
-      console.error('[handleSignIn] Unexpected error during sign-in process:', error.stack || error);
-      toast({
-        title: 'Sign-in Error',
-        description: `An unexpected error occurred: ${error.message || 'Unknown error'}. Please check console for details.`,
-        variant: 'destructive',
-      });
-    } finally {
-      console.log('[handleSignIn] Sign-in process function finished.');
-    }
-  };
-
+  // Only render the main content if authenticated
+  if (status !== 'authenticated') {
+    return null; // Let the middleware handle redirecting to login
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -344,7 +338,7 @@ function ClientWrapper() {
       <header className="bg-secondary p-4 flex justify-between items-center shadow-md">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-bold">Gemini Gateway</h1>
-          {status === 'authenticated' && !userProject && (
+          {!userProject && (
             <Badge variant="outline" className="bg-gradient-to-r from-blue-50 to-green-50 text-blue-700 border-blue-200">
               <Zap className="h-3 w-3 mr-1 text-yellow-500" />
               Free Tier
@@ -352,40 +346,30 @@ function ClientWrapper() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {status === 'authenticated' && (
-            <Popover open={showSettings} onOpenChange={setShowSettings}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Cog className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Settings</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-0" align="end">
-                <div className="p-4 space-y-4">
-                  <ProjectManager onProjectChange={handleProjectChange} />
-                </div>
-              </PopoverContent>
-            </Popover>
-          )}
-          
-          {status === 'loading' ? (
-            <Skeleton className="h-9 w-24 rounded-md" /> // Match button size
-          ) : status === 'authenticated' ? (
-            <div className="flex items-center gap-3">
-              <Avatar className="h-8 w-8"> {/* Slightly smaller avatar */}
-                <AvatarImage src={session?.user?.image ?? undefined} alt="User Avatar" />
-                <AvatarFallback>{(session?.user?.name as string)?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium hidden sm:inline">{session?.user?.name || 'User'}</span> {/* Hide name on small screens */}
-              <Button variant="outline" size="sm" onClick={() => signOut()}>
-                Sign Out
+          <Popover open={showSettings} onOpenChange={setShowSettings}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Cog className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Settings</span>
               </Button>
-            </div>
-          ) : (
-            <Button onClick={handleSignIn} data-testid="sign-in-button"> {/* Added data-testid */}
-              Sign In with Google
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-0" align="end">
+              <div className="p-4 space-y-4">
+                <ProjectManager onProjectChange={handleProjectChange} />
+              </div>
+            </PopoverContent>
+          </Popover>
+          
+          <div className="flex items-center gap-3">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={session?.user?.image ?? undefined} alt="User Avatar" />
+              <AvatarFallback>{(session?.user?.name as string)?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+            </Avatar>
+            <span className="text-sm font-medium hidden sm:inline">{session?.user?.name || 'User'}</span>
+            <Button variant="outline" size="sm" onClick={() => signOut({ callbackUrl: '/login' })}>
+              Sign Out
             </Button>
-          )}
+          </div>
         </div>
       </header>
       
@@ -403,85 +387,83 @@ function ClientWrapper() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Chat</h2>
-              {status === 'authenticated' && (
-                <div className="flex items-center">
-                  {userProject ? (
-                    <div className="flex items-center">
-                      <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-                        Using your project: {userProject.substring(0, 12)}{userProject.length > 12 ? '...' : ''}
-                      </span>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1">
-                            <Info className="h-3 w-3" />
-                            <span className="sr-only">Info</span>
+              <div className="flex items-center">
+                {userProject ? (
+                  <div className="flex items-center">
+                    <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                      Using your project: {userProject.substring(0, 12)}{userProject.length > 12 ? '...' : ''}
+                    </span>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1">
+                          <Info className="h-3 w-3" />
+                          <span className="sr-only">Info</span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" className="w-80">
+                        <div className="space-y-2">
+                          <h3 className="font-medium">Using Your Google Cloud Project</h3>
+                          <p className="text-sm">
+                            API requests are being made using your Google Cloud Project.
+                            You are responsible for any usage costs incurred.
+                          </p>
+                          <p className="text-sm">
+                            Full Project ID: <code className="bg-slate-100 px-1 py-0.5 rounded">{userProject}</code>
+                          </p>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    <Badge className="bg-gradient-to-r from-blue-50 to-green-50 text-blue-700">
+                      <Zap className="h-3 w-3 mr-1 text-yellow-500" />
+                      Free Tier Access
+                    </Badge>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1">
+                          <Info className="h-3 w-3" />
+                          <span className="sr-only">Info</span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" className="w-80">
+                        <div className="space-y-2">
+                          <h3 className="font-medium">About Free Tier Access</h3>
+                          <p className="text-sm">
+                            You're using Gemini Gateway's free tier access, which has the following limits:
+                          </p>
+                          <ul className="text-xs space-y-1 list-disc pl-4">
+                            <li>Limited number of requests per minute</li>
+                            <li>May experience occasional rate limiting</li>
+                            <li>Shared quota among all free tier users</li>
+                          </ul>
+                          <p className="text-sm mt-2">
+                            For higher limits and dedicated quota, link your own Google Cloud Project.
+                          </p>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="w-full mt-2"
+                            onClick={() => setShowSettings(true)}
+                          >
+                            Upgrade to Your Own Project
                           </Button>
-                        </PopoverTrigger>
-                        <PopoverContent side="top" className="w-80">
-                          <div className="space-y-2">
-                            <h3 className="font-medium">Using Your Google Cloud Project</h3>
-                            <p className="text-sm">
-                              API requests are being made using your Google Cloud Project.
-                              You are responsible for any usage costs incurred.
-                            </p>
-                            <p className="text-sm">
-                              Full Project ID: <code className="bg-slate-100 px-1 py-0.5 rounded">{userProject}</code>
-                            </p>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  ) : (
-                    <div className="flex items-center">
-                      <Badge className="bg-gradient-to-r from-blue-50 to-green-50 text-blue-700">
-                        <Zap className="h-3 w-3 mr-1 text-yellow-500" />
-                        Free Tier Access
-                      </Badge>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1">
-                            <Info className="h-3 w-3" />
-                            <span className="sr-only">Info</span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent side="top" className="w-80">
-                          <div className="space-y-2">
-                            <h3 className="font-medium">About Free Tier Access</h3>
-                            <p className="text-sm">
-                              You're using Gemini Gateway's free tier access, which has the following limits:
-                            </p>
-                            <ul className="text-xs space-y-1 list-disc pl-4">
-                              <li>Limited number of requests per minute</li>
-                              <li>May experience occasional rate limiting</li>
-                              <li>Shared quota among all free tier users</li>
-                            </ul>
-                            <p className="text-sm mt-2">
-                              For higher limits and dedicated quota, link your own Google Cloud Project.
-                            </p>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="w-full mt-2"
-                              onClick={() => setShowSettings(true)}
-                            >
-                              Upgrade to Your Own Project
-                            </Button>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  )}
-                </div>
-              )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
+              </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              {status === 'authenticated' ? `Chatting as ${session?.user?.name}` : 'Sign in to start chatting'}
+              Chatting as {session?.user?.name}
             </p>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden flex flex-col p-4">
             <ScrollArea className="flex-grow mb-4 pr-4 -mr-4"> {/* Added padding for scrollbar */}
               <div className="space-y-4" ref={chatContainerRef}>
-                {messages.length === 0 && status === 'authenticated' && (
+                {messages.length === 0 && (
                   <div className="flex items-center justify-center h-full min-h-[200px]">
                     <div className="text-center p-6 bg-slate-50 rounded-lg max-w-md">
                       <h3 className="font-medium mb-2">Welcome to Gemini Gateway!</h3>
@@ -561,10 +543,10 @@ function ClientWrapper() {
               <Textarea
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
-                placeholder={status === 'authenticated' ? "Type your message here..." : "Please sign in to chat"}
+                placeholder="Type your message here..."
                 className="flex-grow resize-none" // Prevent manual resize
                 rows={1} // Start with one row, auto-expands with Shadcn style
-                disabled={status !== 'authenticated' || loading}
+                disabled={loading}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault(); // Prevent newline on Enter
@@ -574,7 +556,7 @@ function ClientWrapper() {
               />
               <Button 
                 type="submit" 
-                disabled={status !== 'authenticated' || loading || !prompt.trim()}
+                disabled={loading || !prompt.trim()}
               >
                 {loading ? '...' : 'Send'} {/* Show ellipsis when loading */}
               </Button>
