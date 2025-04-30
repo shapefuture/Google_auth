@@ -14,6 +14,7 @@ import {useToast} from '@/hooks/use-toast';
 import {Toaster} from '@/components/ui/toaster';
 import {Skeleton} from '@/components/ui/skeleton';
 import {ProjectManager} from '@/components/project-manager';
+import {AutoProjectSetup} from '@/components/auto-project-setup';
 import {Cog, Info, CloudOff, Zap, Shield} from 'lucide-react';
 import {
   Popover,
@@ -38,6 +39,7 @@ function ClientWrapper() {
   const [tokenExpiry, setTokenExpiry] = useState<number | null>(null);
   const [userProject, setUserProject] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAutoSetup, setShowAutoSetup] = useState(false);
   const {data: session, status, update: updateSession} = useSession();
 
   useEffect(() => {
@@ -96,6 +98,15 @@ function ClientWrapper() {
           setTokenExpiry(session.expiresAt as number);
           console.log(`Token expires at: ${new Date((session.expiresAt as number) * 1000).toLocaleString()}`);
         }
+        
+        // Check if auto setup should be shown
+        // Only show if the user doesn't have an existing project
+        if (!session.hasExistingProject) {
+          console.log('No existing project found, showing auto setup');
+          setShowAutoSetup(true);
+        } else {
+          console.log('User has existing project, skipping auto setup');
+        }
       } else {
         console.warn('Access token missing from session.');
         toast({
@@ -109,6 +120,7 @@ function ClientWrapper() {
       console.log('User is not authenticated.');
       setAccessToken(null); // Clear access token on unauthentication
       setTokenExpiry(null);
+      setShowAutoSetup(false); // Hide auto setup when not authenticated
     } else if (status === 'loading') {
       console.log('Session loading...');
       // Optionally handle loading state, e.g., show a global loader
@@ -173,6 +185,19 @@ function ClientWrapper() {
         variant: 'default',
       });
     }
+  };
+
+  // Handle completion of auto setup
+  const handleAutoSetupComplete = (projectId: string | null) => {
+    if (projectId) {
+      console.log(`Auto setup completed, project ID: ${projectId}`);
+      setUserProject(projectId);
+    } else {
+      console.log('Auto setup skipped, using free tier');
+    }
+    
+    // Hide auto setup dialog
+    setShowAutoSetup(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -363,6 +388,16 @@ function ClientWrapper() {
           )}
         </div>
       </header>
+      
+      {/* Auto setup dialog */}
+      {showAutoSetup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background p-6 rounded-lg shadow-lg max-w-md w-full">
+            <AutoProjectSetup onComplete={handleAutoSetupComplete} />
+          </div>
+        </div>
+      )}
+      
       <main className="flex-grow p-4 overflow-hidden flex">
         <Card className="h-full flex flex-col flex-grow">
           <CardHeader>
@@ -451,30 +486,46 @@ function ClientWrapper() {
                     <div className="text-center p-6 bg-slate-50 rounded-lg max-w-md">
                       <h3 className="font-medium mb-2">Welcome to Gemini Gateway!</h3>
                       <p className="text-sm text-slate-600 mb-4">
-                        You're currently using our <span className="font-semibold text-blue-600">free tier access</span>, which 
-                        gives you immediate access to Gemini AI without needing your own API key.
-                        
-                        {!userProject && (
-                          <span className="block mt-2">
-                            For higher limits and dedicated quota, you can optionally{" "}
-                            <button 
-                              className="text-blue-600 hover:underline"
-                              onClick={() => setShowSettings(true)}
-                            >
-                              link your own Google Cloud Project
-                            </button>.
-                          </span>
+                        {userProject ? (
+                          <>
+                            You're using <span className="font-semibold text-green-600">your own Google Cloud Project</span>, which
+                            gives you higher quotas and dedicated access to the Gemini API.
+                          </>
+                        ) : (
+                          <>
+                            You're currently using our <span className="font-semibold text-blue-600">free tier access</span>, which 
+                            gives you immediate access to Gemini AI without needing your own API key.
+                            
+                            <span className="block mt-2">
+                              For higher limits and dedicated quota, you can optionally{" "}
+                              <button 
+                                className="text-blue-600 hover:underline"
+                                onClick={() => setShowSettings(true)}
+                              >
+                                link your own Google Cloud Project
+                              </button>.
+                            </span>
+                          </>
                         )}
                       </p>
                       <div className="flex items-center justify-center gap-2 mb-4">
-                        <Badge className="bg-gradient-to-r from-blue-50 to-green-50 text-blue-700">
-                          <Zap className="h-3 w-3 mr-1 text-yellow-500" />
-                          Free Tier
-                        </Badge>
-                        <Badge variant="outline" className="bg-white">
-                          <Shield className="h-3 w-3 mr-1 text-green-600" />
-                          No API Key Required
-                        </Badge>
+                        {userProject ? (
+                          <Badge className="bg-gradient-to-r from-green-50 to-blue-50 text-green-700">
+                            <Shield className="h-3 w-3 mr-1 text-green-600" />
+                            Your Project
+                          </Badge>
+                        ) : (
+                          <>
+                            <Badge className="bg-gradient-to-r from-blue-50 to-green-50 text-blue-700">
+                              <Zap className="h-3 w-3 mr-1 text-yellow-500" />
+                              Free Tier
+                            </Badge>
+                            <Badge variant="outline" className="bg-white">
+                              <Shield className="h-3 w-3 mr-1 text-green-600" />
+                              No API Key Required
+                            </Badge>
+                          </>
+                        )}
                       </div>
                       <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700 text-left">
                         <p className="font-medium">Start chatting right away! 🚀</p>
@@ -539,6 +590,7 @@ function ClientWrapper() {
             status, 
             session, 
             userProject, 
+            showAutoSetup,
             tokenInfo: {
               accessToken: accessToken ? '[PRESENT]' : '[MISSING]',
               expiresAt: tokenExpiry ? new Date(tokenExpiry * 1000).toLocaleString() : 'unknown'

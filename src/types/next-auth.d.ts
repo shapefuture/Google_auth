@@ -8,6 +8,7 @@ declare module "next-auth" {
     accessToken?: string;
     expiresAt?: number;
     refreshToken?: string;
+    hasExistingProject?: boolean; // Flag to indicate if user already has a project
     user?: {
       id?: string;
       name?: string;

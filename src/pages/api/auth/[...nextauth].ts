@@ -2,6 +2,7 @@ import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import { storeTokenData } from '@/lib/token-utils';
 import { logger } from '@/lib/logger';
+import { getUserProjectId } from '@/lib/project-utils';
 
 const log = logger.createScoped('nextauth');
 
@@ -12,7 +13,8 @@ export const authOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
       authorization: {
         params: {
-          scope: 'email openid https://www.googleapis.com/auth/generative-language',
+          // Add Cloud Platform scope to allow project creation and management
+          scope: 'email openid https://www.googleapis.com/auth/generative-language https://www.googleapis.com/auth/cloud-platform',
           access_type: 'offline',
           response_type: 'code',
           include_granted_scopes: 'true',
@@ -102,11 +104,23 @@ export const authOptions = {
           id: token.sub,
         };
         
+        // Add flag for whether auto-setup is needed
+        if (token.sub) {
+          try {
+            const existingProject = await getUserProjectId(token.sub);
+            session.hasExistingProject = !!existingProject;
+          } catch (error) {
+            log.error('Error checking for existing project', error);
+            session.hasExistingProject = false;
+          }
+        }
+        
         log.debug('Session populated with token data', {
           userId: token.sub as string,
           data: {
             hasAccessToken: !!session.accessToken,
             expiresAt: session.expiresAt,
+            hasExistingProject: session.hasExistingProject,
           }
         });
         
@@ -165,6 +179,10 @@ export const authOptions = {
           isNewUser,
         }
       });
+      
+      // For a seamless experience, we don't trigger automatic project setup here
+      // Instead, the client will handle this with the AutoProjectSetup component
+      // This allows for better user feedback and control
     },
     signOut: async ({ token }) => {
       log.info('Sign-out event', { data: { userId: token?.sub }});
