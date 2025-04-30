@@ -1,6 +1,15 @@
 'use server';
 
 import { headers } from 'next/headers';
+import { cookies } from 'next/headers';
+import { EncryptJWT, jwtDecrypt } from 'jose';
+import { randomBytes } from 'crypto';
+
+// Secret key for encryption (in a real app, this would be an environment variable)
+// Note: This is a placeholder. In production, use a strong, properly managed secret
+const ENCRYPTION_SECRET = new TextEncoder().encode(
+  process.env.ENCRYPTION_SECRET || randomBytes(32).toString('hex')
+);
 
 /**
  * Validates if a Google Cloud Project ID is valid and properly set up
@@ -121,29 +130,57 @@ async function simulateProjectValidation(projectId: string): Promise<{
 }
 
 /**
- * Stores the user's project ID in the browser's localStorage
- * In a production app, this would likely be stored in a database
+ * Securely stores the user's project ID
  */
-export function storeUserProjectId(userId: string, projectId: string | null): void {
-  // This would typically be a server-side operation
-  // For this implementation, we'll just log it
-  console.log(`Storing project ID ${projectId} for user ${userId}`);
-  // In a real implementation:
-  // await db.users.update({ id: userId }, { projectId });
+export async function storeUserProjectId(userId: string, projectId: string | null): Promise<void> {
+  try {
+    if (projectId) {
+      // Encrypt the project ID
+      const encryptedProjectId = await new EncryptJWT({ projectId })
+        .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
+        .setIssuedAt()
+        .setExpirationTime('1y') // 1 year expiration
+        .encrypt(ENCRYPTION_SECRET);
+
+      // Store in an HTTP-only cookie
+      cookies().set({
+        name: `project-${userId}`,
+        value: encryptedProjectId,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 365 * 24 * 60 * 60, // 1 year
+        path: '/',
+        sameSite: 'lax',
+      });
+    } else {
+      // Clear the cookie if projectId is null
+      cookies().delete(`project-${userId}`);
+    }
+    
+    console.log(`Project ID ${projectId ? 'stored' : 'removed'} for user ${userId}`);
+  } catch (error) {
+    console.error('Error storing project ID:', error);
+    throw new Error('Failed to store project ID');
+  }
 }
 
 /**
- * Retrieves the user's project ID from storage
- * In a production app, this would likely be retrieved from a database
+ * Retrieves the user's project ID from secure storage
  */
 export async function getUserProjectId(userId: string): Promise<string | null> {
-  // This would typically be a server-side operation
-  // For this implementation, we'll just return null
-  console.log(`Getting project ID for user ${userId}`);
-  // In a real implementation:
-  // const user = await db.users.findUnique({ where: { id: userId } });
-  // return user?.projectId || null;
-  return null;
+  try {
+    const projectCookie = cookies().get(`project-${userId}`)?.value;
+    
+    if (!projectCookie) {
+      return null;
+    }
+
+    const { payload } = await jwtDecrypt(projectCookie, ENCRYPTION_SECRET);
+    return (payload as any).projectId || null;
+  } catch (error) {
+    console.error('Error retrieving project ID:', error);
+    return null;
+  }
 }
 
 /**

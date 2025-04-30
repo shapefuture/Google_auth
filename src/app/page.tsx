@@ -34,9 +34,10 @@ function ClientWrapper() {
   const [loading, setLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [tokenExpiry, setTokenExpiry] = useState<number | null>(null);
   const [userProject, setUserProject] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const {data: session, status} = useSession();
+  const {data: session, status, update: updateSession} = useSession();
 
   useEffect(() => {
     console.log('ClientWrapper component mounted');
@@ -51,12 +52,49 @@ function ClientWrapper() {
     }
   }, [messages]);
 
+  // Check if token is about to expire and refresh if needed
+  useEffect(() => {
+    let refreshTimeout: NodeJS.Timeout;
+    
+    if (accessToken && tokenExpiry) {
+      const currentTime = Math.floor(Date.now() / 1000);
+      const timeUntilExpiry = tokenExpiry - currentTime;
+      
+      // If token expires in less than 5 minutes (300 seconds), refresh it
+      if (timeUntilExpiry < 300 && timeUntilExpiry > 0) {
+        console.log(`Token expires in ${timeUntilExpiry} seconds. Refreshing...`);
+        refreshToken();
+      } else if (timeUntilExpiry > 0) {
+        // Set a timeout to refresh the token 5 minutes before it expires
+        const refreshTime = (timeUntilExpiry - 300) * 1000;
+        console.log(`Setting token refresh in ${refreshTime}ms`);
+        
+        refreshTimeout = setTimeout(() => {
+          console.log('Token refresh timeout triggered');
+          refreshToken();
+        }, refreshTime);
+      }
+    }
+    
+    return () => {
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+    };
+  }, [accessToken, tokenExpiry]);
+
   useEffect(() => {
     console.log(`Authentication status changed: ${status}`);
     if (status === 'authenticated') {
       if (session?.accessToken) {
         console.log(`Access token found in session: ${session.accessToken}`);
         setAccessToken(session.accessToken as string);
+        
+        // Set token expiry if available
+        if (session.expiresAt) {
+          setTokenExpiry(session.expiresAt as number);
+          console.log(`Token expires at: ${new Date((session.expiresAt as number) * 1000).toLocaleString()}`);
+        }
       } else {
         console.warn('Access token missing from session.');
         toast({
@@ -69,11 +107,53 @@ function ClientWrapper() {
     } else if (status === 'unauthenticated') {
       console.log('User is not authenticated.');
       setAccessToken(null); // Clear access token on unauthentication
+      setTokenExpiry(null);
     } else if (status === 'loading') {
       console.log('Session loading...');
       // Optionally handle loading state, e.g., show a global loader
     }
   }, [session, status, toast]);
+
+  // Function to refresh the access token
+  const refreshToken = async () => {
+    try {
+      console.log('Refreshing access token...');
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to refresh token');
+      }
+      
+      console.log('Token refreshed successfully');
+      
+      // Update the session with the new token
+      setAccessToken(data.accessToken);
+      setTokenExpiry(data.expiresAt);
+      
+      // Also update the session context
+      await updateSession({
+        accessToken: data.accessToken,
+        expiresAt: data.expiresAt,
+      });
+    } catch (error: any) {
+      console.error('Error refreshing token:', error);
+      toast({
+        title: 'Session Error',
+        description: 'Your session has expired. Please sign in again.',
+        variant: 'destructive',
+      });
+      
+      // Force sign out if token refresh fails
+      signOut();
+    }
+  };
 
   const handleProjectChange = (projectId: string | null) => {
     console.log(`Project ID changed to: ${projectId}`);
@@ -99,6 +179,12 @@ function ClientWrapper() {
     setLoading(true);
 
     try {
+      // Check if token is expired and refresh if needed
+      if (tokenExpiry && Math.floor(Date.now() / 1000) > tokenExpiry - 60) {
+        console.log('Token expired or about to expire, refreshing before API call');
+        await refreshToken();
+      }
+      
       console.log(`Submitting prompt: "${currentPrompt}" with accessToken: ${accessToken ? 'present' : 'absent'} and userProject: ${userProject}`);
       const response = await generateResponse({
         prompt: currentPrompt, // Use stored prompt
@@ -112,8 +198,27 @@ function ClientWrapper() {
       const errorMessage = error.message || 'Failed to generate response due to an unknown error';
       console.error('Gemini API Error:', error.stack || error); // Log stack trace if available
       
+      // Handle token expiration errors
+      if (errorMessage.includes('token') && errorMessage.includes('expired')) {
+        toast({
+          title: 'Session Expired',
+          description: 'Your session has expired. Refreshing authentication...',
+          variant: 'warning',
+        });
+        
+        try {
+          await refreshToken();
+          toast({
+            title: 'Session Refreshed',
+            description: 'Your session has been refreshed. Please try again.',
+            variant: 'default',
+          });
+        } catch (refreshError) {
+          // Handle refresh failure - already logged in refreshToken()
+        }
+      }
       // Handle project-specific errors
-      if (errorMessage.includes('project') || errorMessage.includes('billing') || 
+      else if (errorMessage.includes('project') || errorMessage.includes('billing') || 
           errorMessage.includes('quota') || errorMessage.includes('permission')) {
         toast({
           title: 'Project Configuration Error',
@@ -353,7 +458,15 @@ function ClientWrapper() {
        {process.env.NODE_ENV === 'development' && (
         <div className="bg-gray-800 text-white p-4 mt-4 rounded-md text-xs overflow-auto max-h-40"> {/* Darker theme, smaller text */}
           <h3 className="text-sm font-semibold mb-2">Session Details (Debug)</h3>
-          <pre><code>{JSON.stringify({ status, session, userProject }, null, 2)}</code></pre>
+          <pre><code>{JSON.stringify({ 
+            status, 
+            session, 
+            userProject, 
+            tokenInfo: {
+              accessToken: accessToken ? '[PRESENT]' : '[MISSING]',
+              expiresAt: tokenExpiry ? new Date(tokenExpiry * 1000).toLocaleString() : 'unknown'
+            }
+          }, null, 2)}</code></pre>
         </div>
       )}
     </div>
