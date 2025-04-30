@@ -1,9 +1,13 @@
 'use server';
 
-import { headers } from 'next/headers';
 import { cookies } from 'next/headers';
 import { EncryptJWT, jwtDecrypt } from 'jose';
 import { randomBytes } from 'crypto';
+import { logger } from './logger';
+import { createValidationError, withErrorHandling, createApiError, handleApiResponse } from './error-utils';
+
+// Create a scoped logger for this module
+const log = logger.createScoped('project-utils');
 
 // Secret key for encryption (in a real app, this would be an environment variable)
 // Note: This is a placeholder. In production, use a strong, properly managed secret
@@ -20,18 +24,22 @@ export async function validateProjectId(projectId: string): Promise<{
   message: string;
   details?: string[];
 }> {
-  if (!projectId.trim()) {
-    return {
-      valid: false,
-      message: 'Project ID cannot be empty',
-    };
-  }
+  return withErrorHandling(async () => {
+    log.debug('Validating project ID', { method: 'validateProjectId', data: { projectId } });
+    
+    if (!projectId.trim()) {
+      log.warn('Empty project ID provided', { method: 'validateProjectId' });
+      return {
+        valid: false,
+        message: 'Project ID cannot be empty',
+      };
+    }
 
-  try {
     // Simple regex validation for project ID format
     // Google Cloud project IDs must be 6-30 characters, lowercase letters, numbers, and hyphens
     const projectIdRegex = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
     if (!projectIdRegex.test(projectId)) {
+      log.warn('Invalid project ID format', { method: 'validateProjectId', data: { projectId } });
       return {
         valid: false,
         message: 'Invalid Project ID format',
@@ -47,9 +55,11 @@ export async function validateProjectId(projectId: string): Promise<{
     // Validate that the project exists and has the Generative Language API enabled
     // Note: In a real implementation, we would make an actual API call to validate the project
     // For this implementation, we'll simulate the validation
+    log.info('Simulating project validation', { method: 'validateProjectId', data: { projectId } });
     const apiResponse = await simulateProjectValidation(projectId);
 
     if (!apiResponse.exists) {
+      log.warn('Project not found or not accessible', { method: 'validateProjectId', data: { projectId } });
       return {
         valid: false,
         message: 'Project not found or not accessible',
@@ -61,6 +71,7 @@ export async function validateProjectId(projectId: string): Promise<{
     }
 
     if (!apiResponse.billingEnabled) {
+      log.warn('Billing not enabled for project', { method: 'validateProjectId', data: { projectId } });
       return {
         valid: false,
         message: 'Billing is not enabled for this project',
@@ -72,6 +83,7 @@ export async function validateProjectId(projectId: string): Promise<{
     }
 
     if (!apiResponse.apiEnabled) {
+      log.warn('Generative Language API not enabled for project', { method: 'validateProjectId', data: { projectId } });
       return {
         valid: false,
         message: 'Generative Language API is not enabled',
@@ -82,18 +94,12 @@ export async function validateProjectId(projectId: string): Promise<{
       };
     }
 
+    log.info('Project validated successfully', { method: 'validateProjectId', data: { projectId } });
     return {
       valid: true,
       message: 'Project validated successfully',
     };
-  } catch (error: any) {
-    console.error('Project validation error:', error);
-    return {
-      valid: false,
-      message: 'Error validating project',
-      details: [error.message || 'An unexpected error occurred'],
-    };
-  }
+  }, 'project-utils', 'validateProjectId', 'Project validation failed');
 }
 
 /**
@@ -105,27 +111,29 @@ async function simulateProjectValidation(projectId: string): Promise<{
   billingEnabled: boolean;
   apiEnabled: boolean;
 }> {
-  // In a real implementation, we would make actual API calls to validate the project
-  // For this implementation, we'll simulate successful validation for most project IDs
-  // and return specific errors for certain test cases
+  log.debug('Simulating project validation', { method: 'simulateProjectValidation', data: { projectId } });
   
   // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, 1000));
   
   // Test cases for demonstration purposes
   if (projectId === 'invalid-project') {
+    log.debug('Simulating invalid project', { method: 'simulateProjectValidation', data: { projectId } });
     return { exists: false, billingEnabled: false, apiEnabled: false };
   }
   
   if (projectId === 'no-billing-project') {
+    log.debug('Simulating project without billing', { method: 'simulateProjectValidation', data: { projectId } });
     return { exists: true, billingEnabled: false, apiEnabled: false };
   }
   
   if (projectId === 'no-api-project') {
+    log.debug('Simulating project without API enabled', { method: 'simulateProjectValidation', data: { projectId } });
     return { exists: true, billingEnabled: true, apiEnabled: false };
   }
   
   // Default case: project is valid
+  log.debug('Simulating valid project', { method: 'simulateProjectValidation', data: { projectId } });
   return { exists: true, billingEnabled: true, apiEnabled: true };
 }
 
@@ -133,54 +141,71 @@ async function simulateProjectValidation(projectId: string): Promise<{
  * Securely stores the user's project ID
  */
 export async function storeUserProjectId(userId: string, projectId: string | null): Promise<void> {
-  try {
-    if (projectId) {
-      // Encrypt the project ID
-      const encryptedProjectId = await new EncryptJWT({ projectId })
-        .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
-        .setIssuedAt()
-        .setExpirationTime('1y') // 1 year expiration
-        .encrypt(ENCRYPTION_SECRET);
-
-      // Store in an HTTP-only cookie
-      cookies().set({
-        name: `project-${userId}`,
-        value: encryptedProjectId,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 365 * 24 * 60 * 60, // 1 year
-        path: '/',
-        sameSite: 'lax',
-      });
-    } else {
-      // Clear the cookie if projectId is null
-      cookies().delete(`project-${userId}`);
-    }
+  return withErrorHandling(async () => {
+    log.debug('Storing user project ID', { 
+      method: 'storeUserProjectId', 
+      userId, 
+      data: { projectId }
+    });
     
-    console.log(`Project ID ${projectId ? 'stored' : 'removed'} for user ${userId}`);
-  } catch (error) {
-    console.error('Error storing project ID:', error);
-    throw new Error('Failed to store project ID');
-  }
+    try {
+      if (projectId) {
+        // Encrypt the project ID
+        const encryptedProjectId = await new EncryptJWT({ projectId })
+          .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
+          .setIssuedAt()
+          .setExpirationTime('1y') // 1 year expiration
+          .encrypt(ENCRYPTION_SECRET);
+
+        // Store in an HTTP-only cookie
+        cookies().set({
+          name: `project-${userId}`,
+          value: encryptedProjectId,
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          maxAge: 365 * 24 * 60 * 60, // 1 year
+          path: '/',
+          sameSite: 'lax',
+        });
+        
+        log.info('Project ID stored successfully', { userId, data: { projectId } });
+      } else {
+        // Clear the cookie if projectId is null
+        cookies().delete(`project-${userId}`);
+        log.info('Project ID removed', { userId });
+      }
+    } catch (error) {
+      log.error('Error storing project ID', error, { userId, data: { projectId } });
+      throw error;
+    }
+  }, 'project-utils', 'storeUserProjectId', 'Failed to store user project ID');
 }
 
 /**
  * Retrieves the user's project ID from secure storage
  */
 export async function getUserProjectId(userId: string): Promise<string | null> {
-  try {
-    const projectCookie = cookies().get(`project-${userId}`)?.value;
+  return withErrorHandling(async () => {
+    log.debug('Retrieving user project ID', { method: 'getUserProjectId', userId });
     
-    if (!projectCookie) {
+    try {
+      const projectCookie = cookies().get(`project-${userId}`)?.value;
+      
+      if (!projectCookie) {
+        log.debug('No project cookie found for user', { userId });
+        return null;
+      }
+
+      const { payload } = await jwtDecrypt(projectCookie, ENCRYPTION_SECRET);
+      const projectId = (payload as any).projectId || null;
+      
+      log.debug('Project ID retrieved successfully', { userId, data: { projectId } });
+      return projectId;
+    } catch (error) {
+      log.error('Error retrieving project ID', error, { userId });
       return null;
     }
-
-    const { payload } = await jwtDecrypt(projectCookie, ENCRYPTION_SECRET);
-    return (payload as any).projectId || null;
-  } catch (error) {
-    console.error('Error retrieving project ID:', error);
-    return null;
-  }
+  }, 'project-utils', 'getUserProjectId', 'Failed to retrieve user project ID');
 }
 
 /**
@@ -191,28 +216,37 @@ export async function testGeminiAccess(accessToken: string, projectId: string): 
   success: boolean;
   message: string;
 }> {
-  try {
-    // In a real implementation, make a test call to the Gemini API
-    // For this implementation, we'll simulate a successful test
-    await new Promise(resolve => setTimeout(resolve, 1000));
+  return withErrorHandling(async () => {
+    log.info('Testing Gemini API access', { 
+      method: 'testGeminiAccess', 
+      data: { projectId }
+    });
     
-    // Simulate success or failure based on project ID
-    if (projectId === 'fail-test-project') {
+    try {
+      // In a real implementation, make a test call to the Gemini API
+      // For this implementation, we'll simulate a successful test
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Simulate success or failure based on project ID
+      if (projectId === 'fail-test-project') {
+        log.warn('Test request failed for project', { data: { projectId } });
+        return {
+          success: false,
+          message: 'Test request failed. Check your project configuration.',
+        };
+      }
+      
+      log.info('Successfully connected to Gemini API', { data: { projectId } });
+      return {
+        success: true,
+        message: 'Successfully connected to Gemini API with your project.',
+      };
+    } catch (error) {
+      log.error('Gemini access test error', error, { data: { projectId } });
       return {
         success: false,
-        message: 'Test request failed. Check your project configuration.',
+        message: error instanceof Error ? error.message : 'Failed to test Gemini API access',
       };
     }
-    
-    return {
-      success: true,
-      message: 'Successfully connected to Gemini API with your project.',
-    };
-  } catch (error: any) {
-    console.error('Gemini access test error:', error);
-    return {
-      success: false,
-      message: error.message || 'Failed to test Gemini API access',
-    };
-  }
+  }, 'project-utils', 'testGeminiAccess', 'Failed to test Gemini API access');
 }

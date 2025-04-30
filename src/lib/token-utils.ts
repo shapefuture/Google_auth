@@ -3,6 +3,11 @@
 import { cookies } from 'next/headers';
 import { EncryptJWT, jwtDecrypt } from 'jose';
 import { randomBytes } from 'crypto';
+import { logger } from './logger';
+import { createAuthenticationError, createApiError, handleApiResponse, withErrorHandling } from './error-utils';
+
+// Create a scoped logger for this module
+const log = logger.createScoped('token-utils');
 
 // Secret key for encryption (in a real app, this would be an environment variable)
 // Note: This is a placeholder. In production, use a strong, properly managed secret
@@ -20,7 +25,13 @@ interface TokenData {
  * Encrypts and stores token data in a secure HTTP-only cookie
  */
 export async function storeTokenData(userId: string, tokenData: TokenData): Promise<void> {
-  try {
+  return withErrorHandling(async () => {
+    log.debug('Storing token data', { 
+      method: 'storeTokenData', 
+      userId,
+      data: { expiresAt: tokenData.expiresAt, hasRefreshToken: !!tokenData.refreshToken }
+    });
+
     // Encrypt the token data
     const encryptedToken = await new EncryptJWT(tokenData)
       .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
@@ -39,30 +50,43 @@ export async function storeTokenData(userId: string, tokenData: TokenData): Prom
       sameSite: 'lax',
     });
 
-    console.log(`Token data stored for user ${userId}`);
-  } catch (error) {
-    console.error('Error storing token data:', error);
-    throw new Error('Failed to store token data');
-  }
+    log.info('Token data stored successfully', { userId });
+  }, 'token-utils', 'storeTokenData', 'Failed to store token data');
 }
 
 /**
  * Retrieves and decrypts token data from a secure HTTP-only cookie
  */
 export async function getTokenData(userId: string): Promise<TokenData | null> {
-  try {
+  return withErrorHandling(async () => {
+    log.debug('Retrieving token data', { method: 'getTokenData', userId });
+    
     const tokenCookie = cookies().get(`token-${userId}`)?.value;
 
     if (!tokenCookie) {
+      log.info('No token cookie found for user', { userId });
       return null;
     }
 
-    const { payload } = await jwtDecrypt(tokenCookie, ENCRYPTION_SECRET);
-    return payload as unknown as TokenData;
-  } catch (error) {
-    console.error('Error retrieving token data:', error);
-    return null;
-  }
+    try {
+      const { payload } = await jwtDecrypt(tokenCookie, ENCRYPTION_SECRET);
+      const tokenData = payload as unknown as TokenData;
+      
+      log.debug('Token data retrieved successfully', { 
+        userId, 
+        data: { 
+          expiresAt: tokenData.expiresAt,
+          expiresIn: tokenData.expiresAt - Math.floor(Date.now() / 1000),
+          hasRefreshToken: !!tokenData.refreshToken 
+        }
+      });
+      
+      return tokenData;
+    } catch (error) {
+      log.error('Error decrypting token data', error, { userId });
+      return null;
+    }
+  }, 'token-utils', 'getTokenData', 'Failed to retrieve token data');
 }
 
 /**
@@ -71,7 +95,21 @@ export async function getTokenData(userId: string): Promise<TokenData | null> {
 export function isTokenExpired(expiresAt: number): boolean {
   // Add a 5 minute buffer to handle clock skew and network latency
   const bufferTime = 5 * 60; // 5 minutes in seconds
-  return Math.floor(Date.now() / 1000) >= expiresAt - bufferTime;
+  const currentTime = Math.floor(Date.now() / 1000);
+  const timeUntilExpiry = expiresAt - currentTime;
+  
+  log.debug('Checking token expiration', { 
+    method: 'isTokenExpired',
+    data: { 
+      expiresAt,
+      currentTime,
+      timeUntilExpiry,
+      bufferTime,
+      isExpired: currentTime >= expiresAt - bufferTime
+    }
+  });
+  
+  return currentTime >= expiresAt - bufferTime;
 }
 
 /**
@@ -81,62 +119,95 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
   accessToken: string;
   expiresAt: number;
 }> {
-  try {
-    const response = await fetch('https://oauth2.googleapis.com/token', {
+  return withErrorHandling(async () => {
+    log.info('Refreshing access token', { method: 'refreshAccessToken' });
+
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      throw createAuthenticationError(
+        'Google OAuth credentials are missing',
+        { missingKeys: !process.env.GOOGLE_CLIENT_ID ? 'GOOGLE_CLIENT_ID' : 'GOOGLE_CLIENT_SECRET' }
+      );
+    }
+
+    const tokenUrl = 'https://oauth2.googleapis.com/token';
+    log.request('POST', tokenUrl, { 
+      grant_type: 'refresh_token',
+      client_id: '[REDACTED]',
+      client_secret: '[REDACTED]',
+      refresh_token: '[REDACTED]'
+    });
+
+    const response = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID as string,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET as string,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
       }).toString(),
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error_description || 'Failed to refresh access token');
-    }
+    const data = await handleApiResponse<{
+      access_token: string;
+      expires_in: number;
+      scope: string;
+      token_type: string;
+    }>(response, 'token-utils', 'refreshAccessToken');
 
     // Calculate expiration time
     const expiresAt = Math.floor(Date.now() / 1000) + data.expires_in;
+
+    log.info('Access token refreshed successfully', { 
+      data: { 
+        expires_in: data.expires_in,
+        expiresAt,
+        scope: data.scope
+      }
+    });
 
     return {
       accessToken: data.access_token,
       expiresAt,
     };
-  } catch (error) {
-    console.error('Error refreshing access token:', error);
-    throw new Error('Failed to refresh access token');
-  }
+  }, 'token-utils', 'refreshAccessToken', 'Failed to refresh access token');
 }
 
 /**
  * Gets a valid access token, refreshing it if necessary
  */
 export async function getValidAccessToken(userId: string): Promise<string | null> {
-  try {
+  return withErrorHandling(async () => {
+    log.debug('Getting valid access token', { method: 'getValidAccessToken', userId });
+    
     const tokenData = await getTokenData(userId);
 
     if (!tokenData) {
-      console.warn('No token data found for user:', userId);
+      log.warn('No token data found for user', { userId });
       return null;
     }
 
     // Check if token is expired
     if (isTokenExpired(tokenData.expiresAt)) {
-      console.log('Access token expired, attempting to refresh');
+      log.info('Access token expired, attempting to refresh', { 
+        userId,
+        data: { 
+          expiresAt: tokenData.expiresAt, 
+          expiresIn: tokenData.expiresAt - Math.floor(Date.now() / 1000)
+        }
+      });
       
       if (!tokenData.refreshToken) {
-        console.warn('No refresh token available for user:', userId);
+        log.warn('No refresh token available for user', { userId });
         return null;
       }
 
       // Refresh the token
       const newTokenData = await refreshAccessToken(tokenData.refreshToken);
+      
+      log.debug('Storing new token data after refresh', { userId });
       
       // Store the new token data
       await storeTokenData(userId, {
@@ -149,16 +220,25 @@ export async function getValidAccessToken(userId: string): Promise<string | null
     }
 
     // Token is still valid
+    log.debug('Access token is still valid', { 
+      userId,
+      data: { 
+        expiresAt: tokenData.expiresAt,
+        expiresIn: tokenData.expiresAt - Math.floor(Date.now() / 1000)
+      }
+    });
+    
     return tokenData.accessToken;
-  } catch (error) {
-    console.error('Error getting valid access token:', error);
-    return null;
-  }
+  }, 'token-utils', 'getValidAccessToken', 'Failed to get valid access token');
 }
 
 /**
  * Clears the stored token data
  */
 export async function clearTokenData(userId: string): Promise<void> {
-  cookies().delete(`token-${userId}`);
+  return withErrorHandling(async () => {
+    log.info('Clearing token data', { method: 'clearTokenData', userId });
+    cookies().delete(`token-${userId}`);
+    log.debug('Token data cleared successfully', { userId });
+  }, 'token-utils', 'clearTokenData', 'Failed to clear token data');
 }

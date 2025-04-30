@@ -1,6 +1,9 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import { storeTokenData } from '@/lib/token-utils';
+import { logger } from '@/lib/logger';
+
+const log = logger.createScoped('nextauth');
 
 export const authOptions = {
   providers: [
@@ -24,6 +27,15 @@ export const authOptions = {
   callbacks: {
     async jwt({token, account, user}) {
       try {
+        log.debug('JWT callback called', { 
+          data: { 
+            hasToken: !!token, 
+            hasAccount: !!account, 
+            hasUser: !!user,
+            userId: token?.sub,
+          } 
+        });
+        
         // Persist the OAuth access token to the token right after signin
         if (account) {
           // Set expiration time
@@ -33,28 +45,55 @@ export const authOptions = {
           token.refreshToken = account.refresh_token;
           token.expiresAt = expiresAt;
           
-          console.log('Access token persisted in JWT:', account.access_token); // Log the access token
-          console.log('Refresh token obtained:', account.refresh_token ? 'Yes' : 'No');
+          log.info('OAuth tokens received from provider', { 
+            userId: user?.id,
+            data: {
+              provider: account.provider,
+              hasAccessToken: !!account.access_token,
+              hasRefreshToken: !!account.refresh_token,
+              expiresIn: account.expires_in,
+              expiresAt,
+              scope: account.scope,
+              tokenType: account.token_type,
+            }
+          });
           
           // Also store token data securely
           if (user?.id) {
+            log.debug('Storing token data securely', { userId: user.id });
             await storeTokenData(user.id, {
               accessToken: account.access_token as string,
               refreshToken: account.refresh_token as string,
               expiresAt,
             });
+          } else {
+            log.warn('User ID missing, cannot store token data securely');
           }
         } else {
-          console.warn('Account information missing during JWT callback.');
+          log.debug('Account information missing during JWT callback');
         }
         return token;
       } catch (error: any) {
-        console.error('JWT callback error:', error.message, error.stack);
+        log.error('JWT callback error', error, { 
+          data: { 
+            errorMessage: error.message,
+            tokenSub: token?.sub,
+          } 
+        });
         return token;
       }
     },
     async session({session, token, user}) {
       try {
+        log.debug('Session callback called', { 
+          data: { 
+            hasSession: !!session, 
+            hasToken: !!token, 
+            hasUser: !!user,
+            userId: token?.sub,
+          } 
+        });
+        
         // Send properties to the client, like an access_token from a provider.
         session.accessToken = token.accessToken as string;
         session.expiresAt = token.expiresAt as number;
@@ -62,57 +101,86 @@ export const authOptions = {
           ...session.user,
           id: token.sub,
         };
+        
+        log.debug('Session populated with token data', {
+          userId: token.sub as string,
+          data: {
+            hasAccessToken: !!session.accessToken,
+            expiresAt: session.expiresAt,
+          }
+        });
+        
         return session;
       } catch (error: any) {
-        console.error('Session callback error:', error.message, error.stack);
+        log.error('Session callback error', error, {
+          data: { 
+            errorMessage: error.message,
+            tokenSub: token?.sub,
+          }
+        });
         return session;
       }
     },
     async redirect({ url, baseUrl }) {
       try {
-        console.log('Redirect callback called', { url, baseUrl }); // Log the input
+        log.debug('Redirect callback called', { data: { url, baseUrl } });
 
         // Allows relative callback URLs
         if (url.startsWith("/")) {
           const redirectUrl = `${baseUrl}${url}`;
-          console.log('Relative redirect detected, adjusted to:', redirectUrl);
+          log.debug('Relative redirect detected', { data: { url, redirectUrl }});
           return redirectUrl;
         }
+        
         // Allows callback URLs on the same domain
-        const urlHostname = new URL(url).hostname;
-        const baseUrlHostname = new URL(baseUrl).hostname;
-        if (urlHostname === baseUrlHostname) {
-          console.log('Same domain redirect detected:', url);
-          return url;
+        try {
+          const urlHostname = new URL(url).hostname;
+          const baseUrlHostname = new URL(baseUrl).hostname;
+          
+          if (urlHostname === baseUrlHostname) {
+            log.debug('Same domain redirect detected', { data: { url, urlHostname, baseUrlHostname }});
+            return url;
+          }
+          
+          log.warn('External redirect blocked', { data: { url, urlHostname, baseUrlHostname, baseUrl }});
+          return baseUrl;
+        } catch (parseError) {
+          log.error('Error parsing URL in redirect callback', parseError, { data: { url, baseUrl }});
+          return baseUrl;
         }
-        console.log('External redirect blocked, using baseUrl:', baseUrl);
-        return baseUrl;
       } catch (error: any) {
-        console.error('Redirect callback error:', error);
+        log.error('Redirect callback error', error, { data: { url, baseUrl }});
         return baseUrl;
       }
     }
   },
   debug: process.env.NODE_ENV === 'development', // Enable debug logging in development environment
   events: {
-    signIn: async (message) => {
-      console.log('signIn event:', message);
+    signIn: async ({ user, account, profile, isNewUser }) => {
+      log.info('Sign-in event', { 
+        data: {
+          userId: user.id,
+          email: user.email,
+          provider: account?.provider,
+          isNewUser,
+        }
+      });
     },
-    signOut: async (message) => {
-      console.log('signOut event:', message);
+    signOut: async ({ token }) => {
+      log.info('Sign-out event', { data: { userId: token?.sub }});
     },
-    createUser: async (message) => {
-      console.log('createUser event:', message);
+    createUser: async ({ user }) => {
+      log.info('Create user event', { data: { userId: user.id, email: user.email }});
     },
-    session: async (message) => {
-      console.log('session event:', message);
+    session: async ({ session, token }) => {
+      log.debug('Session event', { data: { userId: token?.sub, sessionExpiry: session?.expires }});
     },
-    jwt: async (message) => {
-      console.log('jwt event:', message);
+    jwt: async ({ token }) => {
+      log.debug('JWT event', { data: { userId: token?.sub }});
     },
     // Add event handler to log errors during signin
-    error: async (message) => {
-      console.error('Authentication error event:', message);
+    error: async (error) => {
+      log.error('Authentication error event', error);
     },
   },
 };
