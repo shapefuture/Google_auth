@@ -1,10 +1,9 @@
 'use client';
 
-import type {Metadata} from 'next';
-import {Geist, Geist_Mono} from 'next/font/google';
 import './globals.css';
-import {SessionProvider} from 'next-auth/react';
-import {useEffect} from 'react';
+import { Geist, Geist_Mono } from 'next/font/google';
+import { SessionProvider } from 'next-auth/react';
+import { useEffect } from 'react';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -15,6 +14,22 @@ const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
 });
+
+
+function ClientOnly({children}: {children: React.ReactNode}) {
+  useEffect(() => {
+    console.log('ClientOnly component mounted');
+    return () => {
+      console.log('ClientOnly component unmounted');
+    };
+  }, []);
+
+  return (
+    <SessionProvider>
+      {children}
+    </SessionProvider>
+  );
+}
 
 export default function RootLayout({
   children,
@@ -34,20 +49,5 @@ export default function RootLayout({
         <ClientOnly>{children}</ClientOnly>
       </body>
     </html>
-  );
-}
-
-function ClientOnly({children}: {children: React.ReactNode}) {
-  useEffect(() => {
-    console.log('ClientOnly component mounted');
-    return () => {
-      console.log('ClientOnly component unmounted');
-    };
-  }, []);
-
-  return (
-    <SessionProvider>
-      {children}
-    </SessionProvider>
   );
 }
