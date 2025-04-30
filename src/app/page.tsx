@@ -14,12 +14,13 @@ import {useToast} from '@/hooks/use-toast';
 import {Toaster} from '@/components/ui/toaster';
 import {Skeleton} from '@/components/ui/skeleton';
 import {ProjectManager} from '@/components/project-manager';
-import {Cog, Info, CloudOff} from 'lucide-react';
+import {Cog, Info, CloudOff, Zap, Shield} from 'lucide-react';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Badge } from '@/components/ui/badge';
 
 // Wrapper component to ensure hooks are used within client boundary
 function ClientWrapper() {
@@ -167,8 +168,8 @@ function ClientWrapper() {
       });
     } else {
       toast({
-        title: 'Project Unlinked',
-        description: 'Using Gemini Gateway quota instead',
+        title: 'Using Free Tier',
+        description: 'Switched to Gemini Gateway\'s free tier',
         variant: 'default',
       });
     }
@@ -192,12 +193,12 @@ function ClientWrapper() {
       }
       
       // Log whether using app's API key or user's project
-      console.log(`Submitting prompt: "${currentPrompt}" with accessToken: ${accessToken ? 'present' : 'absent'} and userProject: ${userProject || 'using app default'}`);
+      console.log(`Submitting prompt: "${currentPrompt}" with accessToken: ${accessToken ? 'present' : 'absent'} and userProject: ${userProject || 'using free tier'}`);
       
       const response = await generateResponse({
         prompt: currentPrompt, // Use stored prompt
         accessToken: accessToken ?? undefined,
-        userProject: userProject ?? undefined, // Will use default API key if null
+        userProject: userProject ?? undefined, // Will use default API key if null (free tier)
       });
       
       console.log(`Gemini API response received: ${JSON.stringify(response)}`);
@@ -225,6 +226,17 @@ function ClientWrapper() {
         } catch (refreshError) {
           // Handle refresh failure - already logged in refreshToken()
         }
+      }
+      // Handle free tier quota errors specifically
+      else if (!userProject && (errorMessage.includes('quota') || errorMessage.includes('rate limit'))) {
+        toast({
+          title: 'Free Tier Limit Reached',
+          description: 'You\'ve reached the free tier limit. Consider linking your own Google Cloud Project for higher quotas.',
+          variant: 'warning',
+        });
+        
+        // Suggest linking own project
+        setShowSettings(true);
       }
       // Handle project-specific errors
       else if (errorMessage.includes('project') || errorMessage.includes('billing') || 
@@ -286,13 +298,6 @@ function ClientWrapper() {
       } else {
         // Sign-in process initiated, NextAuth will handle the redirect or session update
         console.log('[handleSignIn] Sign-in initiated successfully. NextAuth will handle the rest.');
-        // No automatic redirect here, let NextAuth handle it based on callbackUrl
-        // if (result.url) {
-        //   console.log(`[handleSignIn] Redirecting to: ${result.url}`);
-        //   window.location.assign(result.url);
-        // } else {
-        //   console.log('[handleSignIn] Sign-in successful, no redirect URL provided by signIn result.');
-        // }
       }
     } catch (error: any) {
       // Catch unexpected errors during the signIn call itself
@@ -312,7 +317,15 @@ function ClientWrapper() {
     <div className="flex flex-col h-screen bg-background">
       <Toaster />
       <header className="bg-secondary p-4 flex justify-between items-center shadow-md">
-        <h1 className="text-xl font-bold">Gemini Gateway</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold">Gemini Gateway</h1>
+          {status === 'authenticated' && !userProject && (
+            <Badge variant="outline" className="bg-gradient-to-r from-blue-50 to-green-50 text-blue-700 border-blue-200">
+              <Zap className="h-3 w-3 mr-1 text-yellow-500" />
+              Free Tier
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {status === 'authenticated' && (
             <Popover open={showSettings} onOpenChange={setShowSettings}>
@@ -385,10 +398,10 @@ function ClientWrapper() {
                     </div>
                   ) : (
                     <div className="flex items-center">
-                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full flex items-center">
-                        <CloudOff className="h-3 w-3 mr-1" />
-                        Using Gemini Gateway quota
-                      </span>
+                      <Badge className="bg-gradient-to-r from-blue-50 to-green-50 text-blue-700">
+                        <Zap className="h-3 w-3 mr-1 text-yellow-500" />
+                        Free Tier Access
+                      </Badge>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1">
@@ -398,12 +411,17 @@ function ClientWrapper() {
                         </PopoverTrigger>
                         <PopoverContent side="top" className="w-80">
                           <div className="space-y-2">
-                            <h3 className="font-medium">Using Gemini Gateway Quota</h3>
+                            <h3 className="font-medium">About Free Tier Access</h3>
                             <p className="text-sm">
-                              You're using the app's shared API quota, which may be limited.
+                              You're using Gemini Gateway's free tier access, which has the following limits:
                             </p>
-                            <p className="text-sm">
-                              For higher limits and more reliable access, link your own Google Cloud Project.
+                            <ul className="text-xs space-y-1 list-disc pl-4">
+                              <li>Limited number of requests per minute</li>
+                              <li>May experience occasional rate limiting</li>
+                              <li>Shared quota among all free tier users</li>
+                            </ul>
+                            <p className="text-sm mt-2">
+                              For higher limits and dedicated quota, link your own Google Cloud Project.
                             </p>
                             <Button 
                               variant="outline" 
@@ -411,7 +429,7 @@ function ClientWrapper() {
                               className="w-full mt-2"
                               onClick={() => setShowSettings(true)}
                             >
-                              Link Your Project
+                              Upgrade to Your Own Project
                             </Button>
                           </div>
                         </PopoverContent>
@@ -433,10 +451,12 @@ function ClientWrapper() {
                     <div className="text-center p-6 bg-slate-50 rounded-lg max-w-md">
                       <h3 className="font-medium mb-2">Welcome to Gemini Gateway!</h3>
                       <p className="text-sm text-slate-600 mb-4">
-                        You can start chatting right away using the app's default quota.
+                        You're currently using our <span className="font-semibold text-blue-600">free tier access</span>, which 
+                        gives you immediate access to Gemini AI without needing your own API key.
+                        
                         {!userProject && (
                           <span className="block mt-2">
-                            For higher limits, you can optionally{" "}
+                            For higher limits and dedicated quota, you can optionally{" "}
                             <button 
                               className="text-blue-600 hover:underline"
                               onClick={() => setShowSettings(true)}
@@ -446,9 +466,19 @@ function ClientWrapper() {
                           </span>
                         )}
                       </p>
+                      <div className="flex items-center justify-center gap-2 mb-4">
+                        <Badge className="bg-gradient-to-r from-blue-50 to-green-50 text-blue-700">
+                          <Zap className="h-3 w-3 mr-1 text-yellow-500" />
+                          Free Tier
+                        </Badge>
+                        <Badge variant="outline" className="bg-white">
+                          <Shield className="h-3 w-3 mr-1 text-green-600" />
+                          No API Key Required
+                        </Badge>
+                      </div>
                       <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700 text-left">
-                        <p className="font-medium">AI is ready to use! 🚀</p>
-                        <p className="mt-1">Currently using: {userProject ? "Your Google Cloud Project" : "Gemini Gateway's shared quota"}</p>
+                        <p className="font-medium">Start chatting right away! 🚀</p>
+                        <p className="mt-1">Currently using: {userProject ? "Your Google Cloud Project" : "Free tier access"}</p>
                       </div>
                     </div>
                   </div>
@@ -513,7 +543,7 @@ function ClientWrapper() {
               accessToken: accessToken ? '[PRESENT]' : '[MISSING]',
               expiresAt: tokenExpiry ? new Date(tokenExpiry * 1000).toLocaleString() : 'unknown'
             },
-            aiSource: userProject ? 'User Project' : 'Default API Key'
+            aiSource: userProject ? 'User Project' : 'Free Tier'
           }, null, 2)}</code></pre>
         </div>
       )}

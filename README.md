@@ -1,15 +1,19 @@
 # Gemini Gateway
 
-Access the Gemini API using your own Google Cloud Project for billing and quota management.
+Access the Gemini API using either the free tier or your own Google Cloud Project for billing and quota management.
 
 ## Overview
 
-Gemini Gateway is a web application that allows users to interact with Google's Gemini AI models. The app authenticates users via Google Sign-In and allows them to link their own Google Cloud Project for billing attribution, giving them full control over their API usage and costs.
+Gemini Gateway is a web application that allows users to interact with Google's Gemini AI models. The app provides two ways to access the Gemini API:
+
+1. **Free Tier Access**: Use the application's shared API key with no setup required
+2. **Your Own Project**: Link your Google Cloud Project for higher quotas and dedicated access
 
 ## Features
 
+- **Free Tier Access**: No API key or setup required - start using Gemini AI immediately
 - **Google Sign-In**: Securely authenticate with your Google account
-- **User-Attributed Billing**: Link your own Google Cloud Project to use the Gemini API with your own quota and billing
+- **User-Attributed Billing (Optional)**: Link your own Google Cloud Project for higher quotas
 - **Chat Interface**: Interactive chat interface for conversations with Gemini AI
 - **Secure Token Management**: Automatic token refresh and secure storage
 - **Project Validation**: Validation of Google Cloud Project configuration
@@ -19,7 +23,7 @@ Gemini Gateway is a web application that allows users to interact with Google's 
 ### Prerequisites
 
 - Node.js 18.x or higher
-- A Google Cloud account with:
+- For deployment: A Google Cloud account with:
   - Generative Language API enabled
   - OAuth 2.0 credentials configured
 
@@ -35,6 +39,8 @@ NEXTAUTH_URL=http://localhost:9005
 NEXTAUTH_SECRET=your_nextauth_secret
 ENCRYPTION_SECRET=your_encryption_secret
 ```
+
+The `GOOGLE_GENAI_API_KEY` is used for the application's free tier access.
 
 ### Installation
 
@@ -53,23 +59,23 @@ npm run dev
 
 4. Open [http://localhost:9005](http://localhost:9005) in your browser
 
-## Setting Up Your Google Cloud Project
+## Access Options
 
-To use Gemini Gateway with your own Google Cloud Project:
+### Free Tier Access
+
+- No API key required from users
+- Instant access after signing in with Google
+- Shared quota among all free tier users
+- Rate-limited to ensure fair usage
+
+### Your Google Cloud Project
+
+For higher quotas and dedicated access:
 
 1. Create a new project in [Google Cloud Console](https://console.cloud.google.com)
 2. Enable the Generative Language API
-3. Set up OAuth consent screen:
-   - Set User Type as External
-   - Add scopes: `https://www.googleapis.com/auth/generative-language`, `email`, `openid`
-   - Add authorized domains
-4. Create OAuth 2.0 Client ID credentials:
-   - Choose Web application type
-   - Add authorized redirect URIs:
-     - `http://localhost:9005/api/auth/callback/google` (development)
-     - `https://your-production-domain.com/api/auth/callback/google` (production)
-5. Enable billing for your project
-6. Copy your Project ID and paste it in the application's Project Settings
+3. Enable billing for your project
+4. Copy your Project ID and paste it in the application's Project Settings
 
 ## Running Tests
 
