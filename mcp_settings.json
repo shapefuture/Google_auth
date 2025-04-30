@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "github.com/upstash/context7-mcp": {
+      "autoApprove": [],
+      "disabled": false,
+      "timeout": 60,
+      "command": "bun",
+      "args": ["run", "/home/user/studio/mcp-servers/context7/dist/index.js"],
+      "transportType": "stdio"
+    }
+  }
+}
