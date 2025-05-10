@@ -1,5 +1,10 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
+import { storeTokenData } from '@/lib/token-utils';
+import { logger } from '@/lib/logger';
+import { getUserProjectId } from '@/lib/project-utils';
+
+const log = logger.createScoped('nextauth');
 
 export const authOptions = {
   providers: [
@@ -8,9 +13,12 @@ export const authOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
       authorization: {
         params: {
-          scope: 'email openid https://www.googleapis.com/auth/generative-language',
+          // Add Cloud Platform scope to allow project creation and management
+          scope: 'email openid https://www.googleapis.com/auth/generative-language https://www.googleapis.com/auth/cloud-platform',
           access_type: 'offline',
           response_type: 'code',
+          include_granted_scopes: 'true',
+          prompt: 'consent', // Force consent screen to ensure we get a refresh token
         },
       },
     }),
@@ -19,76 +27,178 @@ export const authOptions = {
     strategy: 'jwt',
   },
   callbacks: {
-    async jwt({token, account}) {
+    async jwt({token, account, user}) {
       try {
+        log.debug('JWT callback called', { 
+          data: { 
+            hasToken: !!token, 
+            hasAccount: !!account, 
+            hasUser: !!user,
+            userId: token?.sub,
+          } 
+        });
+        
         // Persist the OAuth access token to the token right after signin
         if (account) {
+          // Set expiration time
+          const expiresAt = Math.floor(Date.now() / 1000) + (account.expires_in as number);
+          
           token.accessToken = account.access_token;
-          console.log('Access token persisted in JWT:', account.access_token); // Log the access token
+          token.refreshToken = account.refresh_token;
+          token.expiresAt = expiresAt;
+          
+          log.info('OAuth tokens received from provider', { 
+            userId: user?.id,
+            data: {
+              provider: account.provider,
+              hasAccessToken: !!account.access_token,
+              hasRefreshToken: !!account.refresh_token,
+              expiresIn: account.expires_in,
+              expiresAt,
+              scope: account.scope,
+              tokenType: account.token_type,
+            }
+          });
+          
+          // Also store token data securely
+          if (user?.id) {
+            log.debug('Storing token data securely', { userId: user.id });
+            await storeTokenData(user.id, {
+              accessToken: account.access_token as string,
+              refreshToken: account.refresh_token as string,
+              expiresAt,
+            });
+          } else {
+            log.warn('User ID missing, cannot store token data securely');
+          }
         } else {
-          console.warn('Account information missing during JWT callback.');
+          log.debug('Account information missing during JWT callback');
         }
         return token;
       } catch (error: any) {
-        console.error('JWT callback error:', error.message, error.stack);
+        log.error('JWT callback error', error, { 
+          data: { 
+            errorMessage: error.message,
+            tokenSub: token?.sub,
+          } 
+        });
         return token;
       }
     },
     async session({session, token, user}) {
       try {
+        log.debug('Session callback called', { 
+          data: { 
+            hasSession: !!session, 
+            hasToken: !!token, 
+            hasUser: !!user,
+            userId: token?.sub,
+          } 
+        });
+        
         // Send properties to the client, like an access_token from a provider.
         session.accessToken = token.accessToken as string;
+        session.expiresAt = token.expiresAt as number;
+        session.user = {
+          ...session.user,
+          id: token.sub,
+        };
+        
+        // Add flag for whether auto-setup is needed
+        if (token.sub) {
+          try {
+            const existingProject = await getUserProjectId(token.sub);
+            session.hasExistingProject = !!existingProject;
+          } catch (error) {
+            log.error('Error checking for existing project', error);
+            session.hasExistingProject = false;
+          }
+        }
+        
+        log.debug('Session populated with token data', {
+          userId: token.sub as string,
+          data: {
+            hasAccessToken: !!session.accessToken,
+            expiresAt: session.expiresAt,
+            hasExistingProject: session.hasExistingProject,
+          }
+        });
+        
         return session;
       } catch (error: any) {
-        console.error('Session callback error:', error.message, error.stack);
+        log.error('Session callback error', error, {
+          data: { 
+            errorMessage: error.message,
+            tokenSub: token?.sub,
+          }
+        });
         return session;
       }
     },
     async redirect({ url, baseUrl }) {
       try {
-        console.log('Redirect callback called', { url, baseUrl }); // Log the input
+        log.debug('Redirect callback called', { data: { url, baseUrl } });
 
         // Allows relative callback URLs
         if (url.startsWith("/")) {
           const redirectUrl = `${baseUrl}${url}`;
-          console.log('Relative redirect detected, adjusted to:', redirectUrl);
+          log.debug('Relative redirect detected', { data: { url, redirectUrl }});
           return redirectUrl;
         }
+        
         // Allows callback URLs on the same domain
-        const urlHostname = new URL(url).hostname;
-        const baseUrlHostname = new URL(baseUrl).hostname;
-        if (urlHostname === baseUrlHostname) {
-          console.log('Same domain redirect detected:', url);
-          return url;
+        try {
+          const urlHostname = new URL(url).hostname;
+          const baseUrlHostname = new URL(baseUrl).hostname;
+          
+          if (urlHostname === baseUrlHostname) {
+            log.debug('Same domain redirect detected', { data: { url, urlHostname, baseUrlHostname }});
+            return url;
+          }
+          
+          log.warn('External redirect blocked', { data: { url, urlHostname, baseUrlHostname, baseUrl }});
+          return baseUrl;
+        } catch (parseError) {
+          log.error('Error parsing URL in redirect callback', parseError, { data: { url, baseUrl }});
+          return baseUrl;
         }
-        console.log('External redirect blocked, using baseUrl:', baseUrl);
-        return baseUrl;
       } catch (error: any) {
-        console.error('Redirect callback error:', error);
+        log.error('Redirect callback error', error, { data: { url, baseUrl }});
         return baseUrl;
       }
     }
   },
   debug: process.env.NODE_ENV === 'development', // Enable debug logging in development environment
   events: {
-    signIn: async (message) => {
-      console.log('signIn event:', message);
+    signIn: async ({ user, account, profile, isNewUser }) => {
+      log.info('Sign-in event', { 
+        data: {
+          userId: user.id,
+          email: user.email,
+          provider: account?.provider,
+          isNewUser,
+        }
+      });
+      
+      // For a seamless experience, we don't trigger automatic project setup here
+      // Instead, the client will handle this with the AutoProjectSetup component
+      // This allows for better user feedback and control
     },
-    signOut: async (message) => {
-      console.log('signOut event:', message);
+    signOut: async ({ token }) => {
+      log.info('Sign-out event', { data: { userId: token?.sub }});
     },
-    createUser: async (message) => {
-      console.log('createUser event:', message);
+    createUser: async ({ user }) => {
+      log.info('Create user event', { data: { userId: user.id, email: user.email }});
     },
-    session: async (message) => {
-      console.log('session event:', message);
+    session: async ({ session, token }) => {
+      log.debug('Session event', { data: { userId: token?.sub, sessionExpiry: session?.expires }});
     },
-    jwt: async (message) => {
-      console.log('jwt event:', message);
+    jwt: async ({ token }) => {
+      log.debug('JWT event', { data: { userId: token?.sub }});
     },
     // Add event handler to log errors during signin
-    error: async (message) => {
-      console.error('Authentication error event:', message);
+    error: async (error) => {
+      log.error('Authentication error event', error);
     },
   },
 };

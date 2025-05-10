@@ -7,8 +7,12 @@
  * - GenerateResponseOutput - The return type for the generateResponse function.
  */
 
-import {ai} from '@/ai/ai-instance';
-import {z} from 'genkit';
+import { ai } from '@/ai/ai-instance';
+import { z } from 'genkit';
+import { logger } from '@/lib/logger';
+import { createApiError, withErrorHandling } from '@/lib/error-utils';
+
+const log = logger.createScoped('generate-response');
 
 const GenerateResponseInputSchema = z.object({
   prompt: z.string().describe('The prompt to send to the Gemini API.'),
@@ -23,15 +27,35 @@ const GenerateResponseOutputSchema = z.object({
 export type GenerateResponseOutput = z.infer<typeof GenerateResponseOutputSchema>;
 
 export async function generateResponse(input: GenerateResponseInput): Promise<GenerateResponseOutput> {
-  try {
-    console.log('generateResponse called with input:', input);
+  return withErrorHandling(async () => {
+    log.info('Generate response called', {
+      data: {
+        promptLength: input.prompt.length,
+        hasUserProject: !!input.userProject,
+        hasAccessToken: !!input.accessToken,
+      }
+    });
+    
+    // Validate input
+    if (!input.prompt.trim()) {
+      throw createApiError('Prompt cannot be empty', 400);
+    }
+    
+    if (!input.accessToken) {
+      log.warn('No access token provided for API call');
+    }
+
+    // Call flow to generate response
     const result = await generateResponseFlow(input);
-    console.log('generateResponseFlow returned:', result);
+    
+    log.info('Response generated successfully', {
+      data: {
+        responseLength: result.response.length,
+      }
+    });
+    
     return result;
-  } catch (error: any) {
-    console.error('Error in generateResponse:', error);
-    throw new Error(`Failed to generate response: ${error.message}`);
-  }
+  }, 'generate-response', 'generateResponse', 'Failed to generate response');
 }
 
 const generateResponsePrompt = ai.definePrompt({
@@ -52,11 +76,20 @@ const generateResponsePrompt = ai.definePrompt({
   options: ({
     input
   }) => {
+    log.debug('Configuring API options for prompt', {
+      data: {
+        hasAccessToken: !!input.accessToken,
+        hasUserProject: !!input.userProject,
+      }
+    });
+    
     const headers: HeadersInit = {};
     if (input.accessToken) {
+      log.debug('Adding Authorization header');
       headers['Authorization'] = `Bearer ${input.accessToken}`;
     }
     if (input.userProject) {
+      log.debug('Adding X-Goog-User-Project header', { data: { userProject: input.userProject } });
       headers['X-Goog-User-Project'] = input.userProject;
     }
 
@@ -78,16 +111,33 @@ const generateResponseFlow = ai.defineFlow<
     outputSchema: GenerateResponseOutputSchema,
   },
   async input => {
-    try {
-      console.log('generateResponseFlow called with input:', input);
-      const {output} = await generateResponsePrompt(input);
-      console.log('generateResponsePrompt returned:', output);
+    return withErrorHandling(async () => {
+      log.debug('Generate response flow started', {
+        data: {
+          promptLength: input.prompt.length,
+          hasUserProject: !!input.userProject,
+          hasAccessToken: !!input.accessToken,
+        }
+      });
+      
+      const startTime = Date.now();
+      const { output } = await generateResponsePrompt(input);
+      const endTime = Date.now();
+      
+      log.info('Prompt response received', {
+        data: {
+          responseLength: output?.response.length,
+          latencyMs: endTime - startTime,
+        }
+      });
+      
+      if (!output || !output.response) {
+        throw createApiError('Failed to get response from Gemini API', 500);
+      }
+      
       return {
-        response: output!.response,
+        response: output.response,
       };
-    } catch (error: any) {
-      console.error('Error in generateResponseFlow:', error);
-      throw new Error(`Failed to get response from prompt: ${error.message}`);
-    }
+    }, 'generate-response', 'generateResponseFlow', 'Failed to get response from prompt');
   }
 );

@@ -1,52 +1,31 @@
-'use client';
+import "./globals.css";
+import { Inter } from "next/font/google";
+import { SessionProvider } from "next-auth/react";
+import { Metadata } from "next";
+import type { ReactNode } from "react";
 
-import './globals.css';
-import { Geist, Geist_Mono } from 'next/font/google';
-import { SessionProvider } from 'next-auth/react';
-import { useEffect } from 'react';
+const inter = Inter({ subsets: ["latin"] });
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
+export const metadata: Metadata = {
+  title: "Gemini Gateway",
+  description: "Access the Gemini API with your own Google Cloud Project",
+  icons: [
+    {
+      rel: "icon",
+      url: "/favicon.ico",
+    },
+  ],
+};
 
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
-
-
-function ClientOnly({children}: {children: React.ReactNode}) {
-  useEffect(() => {
-    console.log('ClientOnly component mounted');
-    return () => {
-      console.log('ClientOnly component unmounted');
-    };
-  }, []);
-
-  return (
-    <SessionProvider>
-      {children}
-    </SessionProvider>
-  );
+interface RootLayoutProps {
+  children: ReactNode;
 }
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  useEffect(() => {
-    console.log('RootLayout component mounted');
-    return () => {
-      console.log('RootLayout component unmounted');
-    };
-  }, []);
-
+export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ClientOnly>{children}</ClientOnly>
+      <body className={inter.className}>
+        <SessionProvider>{children}</SessionProvider>
       </body>
     </html>
   );
